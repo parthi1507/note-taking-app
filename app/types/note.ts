@@ -11,18 +11,18 @@ export interface Note {
 }
 
 export type NoteColor =
-  | '#1e1e2e'
-  | '#1e2e2e'
-  | '#2e1e2e'
-  | '#2e2e1e'
-  | '#1e2028'
-  | '#28201e';
+  | '#7c3aed'
+  | '#0891b2'
+  | '#059669'
+  | '#d97706'
+  | '#dc2626'
+  | '#db2777';
 
 export const NOTE_COLORS: NoteColor[] = [
-  '#1e1e2e',
-  '#1e2e2e',
-  '#2e1e2e',
-  '#2e2e1e',
-  '#1e2028',
-  '#28201e',
+  '#7c3aed',
+  '#0891b2',
+  '#059669',
+  '#d97706',
+  '#dc2626',
+  '#db2777',
 ];

@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
@@ -66,18 +65,9 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
     }
   };
 
-  const handleDelete = () => {
-    Alert.alert('Delete Note', 'This note will be permanently deleted.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteNote(note!.id);
-          onBack();
-        },
-      },
-    ]);
+  const handleDelete = async () => {
+    await deleteNote(note!.id);
+    onBack();
   };
 
   const handleAiSummary = async () => {
@@ -364,7 +354,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)',
   },
   iconBtn: { padding: 6 },
-  topTitle: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  topTitle: { color: '#fff', fontSize: 17, fontWeight: '600' },
   topActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   previewBtn: {
     padding: 8, borderRadius: 8,
@@ -376,12 +366,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 8,
   },
   saveBtnDisabled: { opacity: 0.5 },
-  saveBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   scroll: { flex: 1 },
   scrollContent: { padding: 20, gap: 16 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   label: {
-    color: '#666', fontSize: 11, fontWeight: '600',
+    color: '#666', fontSize: 12, fontWeight: '600',
     letterSpacing: 0.8, textTransform: 'uppercase',
   },
   colors: { flexDirection: 'row', gap: 8 },
@@ -398,15 +388,15 @@ const styles = StyleSheet.create({
     borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6,
     minWidth: 80, alignItems: 'center',
   },
-  aiBtnText: { color: '#a78bfa', fontSize: 12, fontWeight: '600' },
+  aiBtnText: { color: '#a78bfa', fontSize: 13, fontWeight: '600' },
   summaryBox: {
     backgroundColor: 'rgba(108,71,255,0.08)',
     borderWidth: 1, borderColor: 'rgba(108,71,255,0.2)',
     borderRadius: 12, padding: 14, gap: 8,
   },
   summaryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  summaryLabel: { color: '#a78bfa', fontSize: 12, fontWeight: '600' },
-  summaryText: { color: '#ccc', fontSize: 14, lineHeight: 22 },
+  summaryLabel: { color: '#a78bfa', fontSize: 13, fontWeight: '600' },
+  summaryText: { color: '#ccc', fontSize: 15, lineHeight: 24 },
   toolbar: { marginHorizontal: -20 },
   toolbarContent: {
     paddingHorizontal: 20, gap: 8,
@@ -422,13 +412,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,107,107,0.15)',
     borderWidth: 1, borderColor: 'rgba(255,107,107,0.4)',
   },
-  toolbarBtnText: { color: '#aaa', fontSize: 13, fontWeight: '600' },
+  toolbarBtnText: { color: '#aaa', fontSize: 14, fontWeight: '600' },
   titleInput: {
-    color: '#fff', fontSize: 24, fontWeight: '700',
-    lineHeight: 32, outlineWidth: 0,
+    color: '#fff', fontSize: 26, fontWeight: '700',
+    lineHeight: 34, outlineWidth: 0,
   } as any,
   contentInput: {
-    color: '#ccc', fontSize: 15, lineHeight: 24,
+    color: '#ccc', fontSize: 16, lineHeight: 26,
     minHeight: 240, outlineWidth: 0,
   } as any,
   previewContainer: { minHeight: 240 },
@@ -440,7 +430,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 12,
   },
   tagInput: {
-    flex: 1, color: '#fff', fontSize: 14,
+    flex: 1, color: '#fff', fontSize: 15,
     paddingVertical: 10, outlineWidth: 0,
   } as any,
   tagAddBtn: { padding: 4 },
@@ -450,5 +440,5 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(108,71,255,0.2)',
     borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5,
   },
-  tagChipText: { color: '#a78bfa', fontSize: 13 },
+  tagChipText: { color: '#a78bfa', fontSize: 14 },
 });
