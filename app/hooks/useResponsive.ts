@@ -14,21 +14,33 @@ export function useResponsive() {
   const isTablet = breakpoint === 'tablet';
   const isDesktop = breakpoint === 'desktop' || breakpoint === 'tv';
 
-  // Card max width based on screen size
+  // Card max width based on screen size (for login/register forms)
   const cardMaxWidth =
     isMobile ? width - 48 :
     isTablet ? 480 :
     isDesktop ? 440 : 500;
 
+  // Note grid columns: 1 → 2 → 3 → 4
+  const numColumns =
+    breakpoint === 'mobile' ? 1 :
+    breakpoint === 'tablet' ? 2 :
+    breakpoint === 'desktop' ? 3 : 4;
+
+  // Fixed note card width based on columns
+  // Container padding = 24px each side (48 total), gap between cards = 12px
+  const horizontalPadding = 48;
+  const gap = 12;
+  const noteCardWidth = (width - horizontalPadding - gap * (numColumns - 1)) / numColumns;
+
   // Font sizes
   const fontSize = {
-    logo: isMobile ? 28 : isTablet ? 34 : 38,
-    logoIcon: isMobile ? 44 : isTablet ? 54 : 60,
-    cardTitle: isMobile ? 20 : isTablet ? 24 : 26,
-    cardSubtitle: isMobile ? 13 : 15,
-    input: isMobile ? 14 : 16,
-    button: isMobile ? 15 : 17,
-    link: isMobile ? 13 : 15,
+    logo: isMobile ? 30 : isTablet ? 36 : 40,
+    logoIcon: isMobile ? 46 : isTablet ? 56 : 62,
+    cardTitle: isMobile ? 22 : isTablet ? 26 : 28,
+    cardSubtitle: isMobile ? 15 : 17,
+    input: isMobile ? 15 : 17,
+    button: isMobile ? 16 : 18,
+    link: isMobile ? 14 : 16,
   };
 
   // Spacing
@@ -47,6 +59,8 @@ export function useResponsive() {
     isTablet,
     isDesktop,
     cardMaxWidth,
+    numColumns,
+    noteCardWidth,
     fontSize,
     spacing,
   };

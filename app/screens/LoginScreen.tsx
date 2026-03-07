@@ -244,9 +244,9 @@ const styles = StyleSheet.create({
   brandSideDesktop: { paddingRight: 16 },
   mobileLogo: { alignItems: 'center', marginBottom: 24 },
   logoText: { fontWeight: 'bold', color: '#fff', letterSpacing: 1 },
-  logoSub: { fontSize: 15, color: '#888', marginTop: 8, marginBottom: 32 },
+  logoSub: { fontSize: 16, color: '#888', marginTop: 8, marginBottom: 32 },
   featureList: { gap: 14 },
-  featureItem: { color: '#aaa', fontSize: 15, lineHeight: 22 },
+  featureItem: { color: '#aaa', fontSize: 16, lineHeight: 24 },
   card: {
     backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 24,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255, 80, 80, 0.3)',
     borderRadius: 10, padding: 12, marginBottom: 16,
   },
-  generalErrorText: { color: '#ff6b6b', fontSize: 13 },
+  generalErrorText: { color: '#ff6b6b', fontSize: 14 },
   inputWrapper: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 12,
@@ -270,7 +270,7 @@ const styles = StyleSheet.create({
   inputIcon: { fontSize: 16, marginRight: 10 },
   eyeButton: { paddingHorizontal: 6, paddingVertical: 4 },
   input: { flex: 1, color: '#fff', outlineWidth: 0 } as any,
-  fieldError: { color: '#ff6b6b', fontSize: 12, marginBottom: 10, marginLeft: 4 },
+  fieldError: { color: '#ff6b6b', fontSize: 13, marginBottom: 10, marginLeft: 4 },
   button: {
     backgroundColor: '#6c47ff', borderRadius: 12, alignItems: 'center',
     marginTop: 10, shadowColor: '#6c47ff', shadowOffset: { width: 0, height: 4 },
@@ -280,7 +280,7 @@ const styles = StyleSheet.create({
   buttonText: { color: '#fff', fontWeight: '700', letterSpacing: 0.5 },
   divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 20 },
   dividerLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.1)' },
-  dividerText: { color: '#666', paddingHorizontal: 12, fontSize: 13 },
+  dividerText: { color: '#666', paddingHorizontal: 12, fontSize: 14 },
   secondaryButton: { alignItems: 'center' },
   secondaryText: { color: '#888' },
   secondaryHighlight: { color: '#6c47ff', fontWeight: '700' },
