@@ -1,23 +1,33 @@
-const API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
-const API_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+const API_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY;
+const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 async function ask(prompt: string): Promise<string> {
-  const response = await fetch(`${API_URL}?key=${API_KEY}`, {
+  const response = await fetch(API_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${API_KEY}`,
+    },
     body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.7, maxOutputTokens: 256 },
+      model: 'llama-3.1-8b-instant',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+      max_tokens: 256,
     }),
   });
 
   if (!response.ok) {
-    throw new Error('Gemini API request failed');
+    if (response.status === 429) {
+      throw new Error('Rate limit reached. Please wait a moment and try again.');
+    }
+    if (response.status === 401) {
+      throw new Error('API key not authorized. Check your Groq API key.');
+    }
+    throw new Error(`API error: ${response.status}`);
   }
 
   const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+  return data.choices?.[0]?.message?.content?.trim() ?? '';
 }
 
 export async function generateSummary(content: string): Promise<string> {
