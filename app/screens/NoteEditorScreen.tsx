@@ -21,14 +21,16 @@ import { useVoiceInput } from '../hooks/useVoiceInput';
 
 interface Props {
   note?: Note;
+  initialTitle?: string;
+  initialContent?: string;
   onBack: () => void;
 }
 
 type AiAction = 'summary' | 'title' | 'tags' | null;
 
-export default function NoteEditorScreen({ note, onBack }: Props) {
-  const [title, setTitle] = useState(note?.title ?? '');
-  const [content, setContent] = useState(note?.content ?? '');
+export default function NoteEditorScreen({ note, initialTitle = '', initialContent = '', onBack }: Props) {
+  const [title, setTitle] = useState(note?.title ?? initialTitle);
+  const [content, setContent] = useState(note?.content ?? initialContent);
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>(note?.tags ?? []);
   const [color, setColor] = useState(note?.color ?? NOTE_COLORS[0]);

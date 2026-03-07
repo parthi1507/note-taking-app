@@ -8,12 +8,15 @@ import RegisterScreen from './app/screens/RegisterScreen';
 import HomeScreen from './app/screens/HomeScreen';
 import NoteEditorScreen from './app/screens/NoteEditorScreen';
 import { Note } from './app/types/note';
+import { NoteTemplate } from './app/data/templates';
 
 type Screen = 'login' | 'register' | 'home' | 'editor';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('login');
   const [editingNote, setEditingNote] = useState<Note | undefined>(undefined);
+  const [initialTitle, setInitialTitle] = useState('');
+  const [initialContent, setInitialContent] = useState('');
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -27,13 +30,17 @@ export default function App() {
     setScreen('login');
   };
 
-  const handleNewNote = () => {
+  const handleNewNote = (template?: NoteTemplate) => {
     setEditingNote(undefined);
+    setInitialTitle(template?.getTitle() ?? '');
+    setInitialContent(template?.getContent() ?? '');
     setScreen('editor');
   };
 
   const handleEditNote = (note: Note) => {
     setEditingNote(note);
+    setInitialTitle('');
+    setInitialContent('');
     setScreen('editor');
   };
 
@@ -55,6 +62,8 @@ export default function App() {
       <>
         <NoteEditorScreen
           note={editingNote}
+          initialTitle={initialTitle}
+          initialContent={initialContent}
           onBack={() => setScreen('home')}
         />
         <StatusBar style="light" />

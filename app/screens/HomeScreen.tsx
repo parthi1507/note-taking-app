@@ -17,10 +17,12 @@ import { useNoteStore } from '../store/noteStore';
 import { useResponsive } from '../hooks/useResponsive';
 import NoteCard from '../components/NoteCard';
 import EmptyState from '../components/EmptyState';
+import TemplatePickerModal from '../components/TemplatePickerModal';
 import { Note } from '../types/note';
+import { NoteTemplate } from '../data/templates';
 
 interface Props {
-  onNewNote: () => void;
+  onNewNote: (template?: NoteTemplate) => void;
   onEditNote: (note: Note) => void;
   onLogout: () => void;
 }
@@ -29,6 +31,7 @@ export default function HomeScreen({ onNewNote, onEditNote, onLogout }: Props) {
   const { notes, searchQuery, setNotes, setSearchQuery, filteredNotes } = useNoteStore();
   const [userName, setUserName] = useState('');
   const [loading, setLoading] = useState(true);
+  const [showTemplates, setShowTemplates] = useState(false);
   const { isMobile } = useResponsive();
 
   useEffect(() => {
@@ -133,9 +136,19 @@ export default function HomeScreen({ onNewNote, onEditNote, onLogout }: Props) {
       )}
 
       {/* FAB */}
-      <TouchableOpacity style={styles.fab} onPress={onNewNote}>
+      <TouchableOpacity style={styles.fab} onPress={() => setShowTemplates(true)}>
         <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>
+
+      {/* Template Picker */}
+      <TemplatePickerModal
+        visible={showTemplates}
+        onClose={() => setShowTemplates(false)}
+        onSelect={(template) => {
+          setShowTemplates(false);
+          onNewNote(template);
+        }}
+      />
     </View>
   );
 }
