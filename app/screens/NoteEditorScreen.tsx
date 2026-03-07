@@ -9,16 +9,21 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../services/firebase';
 import { createNote, updateNote, deleteNote } from '../services/noteService';
+import { generateSummary, generateTitle, generateTags } from '../services/geminiService';
 import { Note, NOTE_COLORS } from '../types/note';
+import MarkdownPreview from '../components/MarkdownPreview';
 
 interface Props {
   note?: Note;
   onBack: () => void;
 }
+
+type AiAction = 'summary' | 'title' | 'tags' | null;
 
 export default function NoteEditorScreen({ note, onBack }: Props) {
   const [title, setTitle] = useState(note?.title ?? '');
@@ -27,6 +32,9 @@ export default function NoteEditorScreen({ note, onBack }: Props) {
   const [tags, setTags] = useState<string[]>(note?.tags ?? []);
   const [color, setColor] = useState(note?.color ?? NOTE_COLORS[0]);
   const [saving, setSaving] = useState(false);
+  const [aiLoading, setAiLoading] = useState<AiAction>(null);
+  const [previewMode, setPreviewMode] = useState(false);
+  const [summary, setSummary] = useState('');
   const isEditing = !!note;
 
   const handleSave = async () => {
@@ -40,13 +48,7 @@ export default function NoteEditorScreen({ note, onBack }: Props) {
       if (isEditing) {
         await updateNote(note.id, { title, content, tags, color });
       } else {
-        await createNote(userId, {
-          title,
-          content,
-          tags,
-          color,
-          isPinned: false,
-        });
+        await createNote(userId, { title, content, tags, color, isPinned: false });
       }
       onBack();
     } catch {
@@ -70,11 +72,62 @@ export default function NoteEditorScreen({ note, onBack }: Props) {
     ]);
   };
 
+  const handleAiSummary = async () => {
+    if (!content.trim()) {
+      Alert.alert('No content', 'Write some content first to summarize.');
+      return;
+    }
+    setAiLoading('summary');
+    try {
+      const result = await generateSummary(content);
+      setSummary(result);
+    } catch {
+      Alert.alert('AI Error', 'Failed to generate summary. Try again.');
+    } finally {
+      setAiLoading(null);
+    }
+  };
+
+  const handleAiTitle = async () => {
+    if (!content.trim()) {
+      Alert.alert('No content', 'Write some content first to generate a title.');
+      return;
+    }
+    setAiLoading('title');
+    try {
+      const result = await generateTitle(content);
+      setTitle(result);
+    } catch {
+      Alert.alert('AI Error', 'Failed to generate title. Try again.');
+    } finally {
+      setAiLoading(null);
+    }
+  };
+
+  const handleAiTags = async () => {
+    if (!content.trim()) {
+      Alert.alert('No content', 'Write some content first to generate tags.');
+      return;
+    }
+    setAiLoading('tags');
+    try {
+      const result = await generateTags(content);
+      const merged = [...new Set([...tags, ...result])].slice(0, 5);
+      setTags(merged);
+    } catch {
+      Alert.alert('AI Error', 'Failed to generate tags. Try again.');
+    } finally {
+      setAiLoading(null);
+    }
+  };
+
+  const insertMarkdown = (syntax: string) => {
+    setContent((prev) => prev + syntax);
+  };
+
   const addTag = () => {
     const t = tagInput.trim().toLowerCase().replace(/\s+/g, '-');
-    if (t && !tags.includes(t) && tags.length < 5) {
-      setTags([...tags, t]);
-    }
+    if (t && !tags.includes(t) && tags.length < 5) setTags([...tags, t]);
     setTagInput('');
   };
 
@@ -94,6 +147,16 @@ export default function NoteEditorScreen({ note, onBack }: Props) {
         <Text style={styles.topTitle}>{isEditing ? 'Edit Note' : 'New Note'}</Text>
 
         <View style={styles.topActions}>
+          <TouchableOpacity
+            onPress={() => setPreviewMode((p) => !p)}
+            style={[styles.previewBtn, previewMode && styles.previewBtnActive]}
+          >
+            <Ionicons
+              name={previewMode ? 'create-outline' : 'eye-outline'}
+              size={18}
+              color={previewMode ? '#6c47ff' : '#888'}
+            />
+          </TouchableOpacity>
           {isEditing && (
             <TouchableOpacity onPress={handleDelete} style={styles.iconBtn}>
               <Ionicons name="trash-outline" size={20} color="#ff6b6b" />
@@ -116,22 +179,102 @@ export default function NoteEditorScreen({ note, onBack }: Props) {
         keyboardShouldPersistTaps="handled"
       >
         {/* Color picker */}
-        <View style={styles.colorRow}>
+        <View style={styles.row}>
           <Text style={styles.label}>Color</Text>
           <View style={styles.colors}>
             {NOTE_COLORS.map((c) => (
               <TouchableOpacity
                 key={c}
-                style={[
-                  styles.colorDot,
-                  { backgroundColor: c },
-                  color === c && styles.colorDotSelected,
-                ]}
+                style={[styles.colorDot, { backgroundColor: c }, color === c && styles.colorDotSelected]}
                 onPress={() => setColor(c)}
               />
             ))}
           </View>
         </View>
+
+        {/* AI Actions */}
+        <View style={styles.aiRow}>
+          <Text style={styles.label}>✨ AI</Text>
+          <View style={styles.aiButtons}>
+            <TouchableOpacity
+              style={styles.aiBtn}
+              onPress={handleAiTitle}
+              disabled={!!aiLoading}
+            >
+              {aiLoading === 'title' ? (
+                <ActivityIndicator size="small" color="#6c47ff" />
+              ) : (
+                <Text style={styles.aiBtnText}>Auto Title</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.aiBtn}
+              onPress={handleAiTags}
+              disabled={!!aiLoading}
+            >
+              {aiLoading === 'tags' ? (
+                <ActivityIndicator size="small" color="#6c47ff" />
+              ) : (
+                <Text style={styles.aiBtnText}>Auto Tags</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.aiBtn}
+              onPress={handleAiSummary}
+              disabled={!!aiLoading}
+            >
+              {aiLoading === 'summary' ? (
+                <ActivityIndicator size="small" color="#6c47ff" />
+              ) : (
+                <Text style={styles.aiBtnText}>Summarize</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* AI Summary result */}
+        {summary ? (
+          <View style={styles.summaryBox}>
+            <View style={styles.summaryHeader}>
+              <Text style={styles.summaryLabel}>✨ AI Summary</Text>
+              <TouchableOpacity onPress={() => setSummary('')}>
+                <Ionicons name="close" size={16} color="#888" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.summaryText}>{summary}</Text>
+          </View>
+        ) : null}
+
+        {/* Markdown toolbar (edit mode only) */}
+        {!previewMode && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.toolbar}
+            contentContainerStyle={styles.toolbarContent}
+          >
+            {[
+              { label: 'H1', syntax: '\n# ' },
+              { label: 'H2', syntax: '\n## ' },
+              { label: 'B', syntax: '**text**' },
+              { label: 'I', syntax: '*text*' },
+              { label: '•', syntax: '\n- ' },
+              { label: '☐', syntax: '\n- [ ] ' },
+              { label: '`code`', syntax: '`code`' },
+              { label: '---', syntax: '\n---\n' },
+            ].map((item) => (
+              <TouchableOpacity
+                key={item.label}
+                style={styles.toolbarBtn}
+                onPress={() => insertMarkdown(item.syntax)}
+              >
+                <Text style={styles.toolbarBtnText}>{item.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
 
         {/* Title */}
         <TextInput
@@ -143,16 +286,22 @@ export default function NoteEditorScreen({ note, onBack }: Props) {
           multiline
         />
 
-        {/* Content */}
-        <TextInput
-          style={styles.contentInput}
-          placeholder="Start writing your note..."
-          placeholderTextColor="#444"
-          value={content}
-          onChangeText={setContent}
-          multiline
-          textAlignVertical="top"
-        />
+        {/* Content — Edit or Preview */}
+        {previewMode ? (
+          <View style={styles.previewContainer}>
+            <MarkdownPreview content={content} />
+          </View>
+        ) : (
+          <TextInput
+            style={styles.contentInput}
+            placeholder={`Start writing...\n\nMarkdown supported:\n# Heading\n**bold** *italic*\n- bullet list\n- [ ] checkbox`}
+            placeholderTextColor="#444"
+            value={content}
+            onChangeText={setContent}
+            multiline
+            textAlignVertical="top"
+          />
+        )}
 
         {/* Tags */}
         <View style={styles.tagSection}>
@@ -171,15 +320,10 @@ export default function NoteEditorScreen({ note, onBack }: Props) {
               <Ionicons name="add" size={18} color="#6c47ff" />
             </TouchableOpacity>
           </View>
-
           {tags.length > 0 && (
             <View style={styles.tagsRow}>
               {tags.map((tag) => (
-                <TouchableOpacity
-                  key={tag}
-                  style={styles.tagChip}
-                  onPress={() => removeTag(tag)}
-                >
+                <TouchableOpacity key={tag} style={styles.tagChip} onPress={() => removeTag(tag)}>
                   <Text style={styles.tagChipText}>#{tag}</Text>
                   <Ionicons name="close" size={12} color="#a78bfa" style={{ marginLeft: 4 }} />
                 </TouchableOpacity>
@@ -193,132 +337,94 @@ export default function NoteEditorScreen({ note, onBack }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0f0f1a',
-    paddingTop: 56,
-  },
+  container: { flex: 1, backgroundColor: '#0f0f1a', paddingTop: 56 },
   topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingBottom: 16,
+    borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)',
   },
-  iconBtn: {
-    padding: 6,
+  iconBtn: { padding: 6 },
+  topTitle: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  topActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  previewBtn: {
+    padding: 8, borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.06)',
   },
-  topTitle: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  topActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
+  previewBtnActive: { backgroundColor: 'rgba(108,71,255,0.15)' },
   saveBtn: {
-    backgroundColor: '#6c47ff',
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    backgroundColor: '#6c47ff', borderRadius: 10,
+    paddingHorizontal: 16, paddingVertical: 8,
   },
-  saveBtnDisabled: {
-    opacity: 0.5,
-  },
-  saveBtnText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 20,
-    gap: 20,
-  },
-  colorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
+  saveBtnDisabled: { opacity: 0.5 },
+  saveBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  scroll: { flex: 1 },
+  scrollContent: { padding: 20, gap: 16 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   label: {
-    color: '#666',
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
+    color: '#666', fontSize: 11, fontWeight: '600',
+    letterSpacing: 0.8, textTransform: 'uppercase',
   },
-  colors: {
-    flexDirection: 'row',
-    gap: 8,
-  },
+  colors: { flexDirection: 'row', gap: 8 },
   colorDot: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    width: 22, height: 22, borderRadius: 11,
+    borderWidth: 2, borderColor: 'transparent',
   },
-  colorDotSelected: {
-    borderColor: '#6c47ff',
-    transform: [{ scale: 1.2 }],
+  colorDotSelected: { borderColor: '#6c47ff', transform: [{ scale: 1.2 }] },
+  aiRow: { flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
+  aiButtons: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  aiBtn: {
+    backgroundColor: 'rgba(108,71,255,0.15)',
+    borderWidth: 1, borderColor: 'rgba(108,71,255,0.3)',
+    borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6,
+    minWidth: 80, alignItems: 'center',
   },
+  aiBtnText: { color: '#a78bfa', fontSize: 12, fontWeight: '600' },
+  summaryBox: {
+    backgroundColor: 'rgba(108,71,255,0.08)',
+    borderWidth: 1, borderColor: 'rgba(108,71,255,0.2)',
+    borderRadius: 12, padding: 14, gap: 8,
+  },
+  summaryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  summaryLabel: { color: '#a78bfa', fontSize: 12, fontWeight: '600' },
+  summaryText: { color: '#ccc', fontSize: 14, lineHeight: 22 },
+  toolbar: { marginHorizontal: -20 },
+  toolbarContent: {
+    paddingHorizontal: 20, gap: 8,
+    paddingVertical: 8,
+    borderTopWidth: 1, borderBottomWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  toolbarBtn: {
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6,
+  },
+  toolbarBtnText: { color: '#aaa', fontSize: 13, fontWeight: '600' },
   titleInput: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: '700',
-    lineHeight: 32,
-    outlineWidth: 0,
+    color: '#fff', fontSize: 24, fontWeight: '700',
+    lineHeight: 32, outlineWidth: 0,
   } as any,
   contentInput: {
-    color: '#ccc',
-    fontSize: 15,
-    lineHeight: 24,
-    minHeight: 240,
-    outlineWidth: 0,
+    color: '#ccc', fontSize: 15, lineHeight: 24,
+    minHeight: 240, outlineWidth: 0,
   } as any,
-  tagSection: {
-    gap: 10,
-  },
+  previewContainer: { minHeight: 240 },
+  tagSection: { gap: 10 },
   tagInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row', alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    paddingHorizontal: 12,
+    borderRadius: 10, borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 12,
   },
   tagInput: {
-    flex: 1,
-    color: '#fff',
-    fontSize: 14,
-    paddingVertical: 10,
-    outlineWidth: 0,
+    flex: 1, color: '#fff', fontSize: 14,
+    paddingVertical: 10, outlineWidth: 0,
   } as any,
-  tagAddBtn: {
-    padding: 4,
-  },
-  tagsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
+  tagAddBtn: { padding: 4 },
+  tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tagChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row', alignItems: 'center',
     backgroundColor: 'rgba(108,71,255,0.2)',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5,
   },
-  tagChipText: {
-    color: '#a78bfa',
-    fontSize: 13,
-  },
+  tagChipText: { color: '#a78bfa', fontSize: 13 },
 });
