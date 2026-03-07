@@ -6,7 +6,7 @@ describe('LoginScreen', () => {
   it('renders title and subtitle correctly', () => {
     const { getByText } = render(<LoginScreen />);
     expect(getByText('Welcome Back')).toBeTruthy();
-    expect(getByText('Sign in to your notes')).toBeTruthy();
+    expect(getByText('Sign in to continue')).toBeTruthy();
   });
 
   it('renders email and password inputs', () => {
