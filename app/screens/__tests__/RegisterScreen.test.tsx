@@ -6,7 +6,7 @@ describe('RegisterScreen', () => {
   it('renders title and subtitle correctly', () => {
     const { getByText } = render(<RegisterScreen />);
     expect(getByText('Create Account')).toBeTruthy();
-    expect(getByText('Start taking smarter notes')).toBeTruthy();
+    expect(getByText('Join thousands of smart note takers')).toBeTruthy();
   });
 
   it('renders name, email, and password inputs', () => {

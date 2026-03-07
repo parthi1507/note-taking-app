@@ -1,35 +1,64 @@
 import { StatusBar } from 'expo-status-bar';
 import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './app/services/firebase';
+import { logoutUser } from './app/services/authService';
 import LoginScreen from './app/screens/LoginScreen';
 import RegisterScreen from './app/screens/RegisterScreen';
+import HomeScreen from './app/screens/HomeScreen';
+import NoteEditorScreen from './app/screens/NoteEditorScreen';
+import { Note } from './app/types/note';
 
-type Screen = 'login' | 'register' | 'home';
+type Screen = 'login' | 'register' | 'home' | 'editor';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('login');
+  const [editingNote, setEditingNote] = useState<Note | undefined>(undefined);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setScreen('home');
-      } else {
-        setScreen('login');
-      }
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setScreen(user ? 'home' : 'login');
     });
-    return unsubscribe;
+    return unsub;
   }, []);
+
+  const handleLogout = async () => {
+    await logoutUser();
+    setScreen('login');
+  };
+
+  const handleNewNote = () => {
+    setEditingNote(undefined);
+    setScreen('editor');
+  };
+
+  const handleEditNote = (note: Note) => {
+    setEditingNote(note);
+    setScreen('editor');
+  };
 
   if (screen === 'home') {
     return (
-      <View style={styles.container}>
-        <Text style={styles.logoIcon}>📝</Text>
-        <Text style={styles.title}>NoteApp</Text>
-        <Text style={styles.subtitle}>Notes screen coming soon...</Text>
+      <>
+        <HomeScreen
+          onNewNote={handleNewNote}
+          onEditNote={handleEditNote}
+          onLogout={handleLogout}
+        />
         <StatusBar style="light" />
-      </View>
+      </>
+    );
+  }
+
+  if (screen === 'editor') {
+    return (
+      <>
+        <NoteEditorScreen
+          note={editingNote}
+          onBack={() => setScreen('home')}
+        />
+        <StatusBar style="light" />
+      </>
     );
   }
 
@@ -46,30 +75,7 @@ export default function App() {
           onRegistered={() => setScreen('home')}
         />
       )}
-      <StatusBar style="auto" />
+      <StatusBar style="light" />
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0f0f1a',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoIcon: {
-    fontSize: 52,
-    marginBottom: 12,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#888',
-    marginTop: 8,
-  },
-});

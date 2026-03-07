@@ -29,8 +29,10 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@expo/vector-icons": "^15.1.1",
     "@testing-library/jest-native": "^5.4.3",
     "@testing-library/react-native": "^13.3.3",
+    "@types/jest": "^30.0.0",
     "@types/react": "~19.2.2",
     "@typescript-eslint/eslint-plugin": "^8.56.1",
     "@typescript-eslint/parser": "^8.56.1",
@@ -46,6 +48,17 @@
     "setupFilesAfterEnv": [
       "@testing-library/jest-native/extend-expect"
     ],
+    "transformIgnorePatterns": [
+      "/node_modules/(?!(.pnpm|react-native|@react-native|@react-native-community|expo|@expo|@expo-google-fonts|react-navigation|@react-navigation|firebase|@firebase|zustand))"
+    ],
+    "moduleNameMapper": {
+      "^@expo/vector-icons$": "<rootDir>/__mocks__/@expo/vector-icons.js",
+      "^@expo/vector-icons/(.*)$": "<rootDir>/__mocks__/@expo/vector-icons.js",
+      "^firebase/(.*)$": "<rootDir>/__mocks__/firebase.js",
+      "^@firebase/(.*)$": "<rootDir>/__mocks__/firebase.js",
+      "^../services/authService$": "<rootDir>/__mocks__/authService.js",
+      "^../services/firebase$": "<rootDir>/__mocks__/firebaseService.js"
+    },
     "collectCoverageFrom": [
       "app/**/*.{ts,tsx}",
       "!app/**/*.d.ts"
