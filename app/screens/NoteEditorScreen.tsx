@@ -17,6 +17,7 @@ import { createNote, updateNote, deleteNote } from '../services/noteService';
 import { generateSummary, generateTitle, generateTags } from '../services/geminiService';
 import { Note, NOTE_COLORS } from '../types/note';
 import MarkdownPreview from '../components/MarkdownPreview';
+import { useVoiceInput } from '../hooks/useVoiceInput';
 
 interface Props {
   note?: Note;
@@ -36,6 +37,11 @@ export default function NoteEditorScreen({ note, onBack }: Props) {
   const [previewMode, setPreviewMode] = useState(false);
   const [summary, setSummary] = useState('');
   const isEditing = !!note;
+
+  const { isListening, isSupported, toggleListening } = useVoiceInput({
+    onResult: (text) => setContent((prev) => prev + text),
+    onError: () => Alert.alert('Voice Error', 'Could not capture voice. Please try again.'),
+  });
 
   const handleSave = async () => {
     if (!title.trim() && !content.trim()) {
@@ -273,6 +279,18 @@ export default function NoteEditorScreen({ note, onBack }: Props) {
                 <Text style={styles.toolbarBtnText}>{item.label}</Text>
               </TouchableOpacity>
             ))}
+            {isSupported && (
+              <TouchableOpacity
+                style={[styles.toolbarBtn, isListening && styles.toolbarBtnActive]}
+                onPress={toggleListening}
+              >
+                <Ionicons
+                  name={isListening ? 'stop-circle' : 'mic-outline'}
+                  size={16}
+                  color={isListening ? '#ff6b6b' : '#aaa'}
+                />
+              </TouchableOpacity>
+            )}
           </ScrollView>
         )}
 
@@ -397,6 +415,10 @@ const styles = StyleSheet.create({
   toolbarBtn: {
     backgroundColor: 'rgba(255,255,255,0.07)',
     borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6,
+  },
+  toolbarBtnActive: {
+    backgroundColor: 'rgba(255,107,107,0.15)',
+    borderWidth: 1, borderColor: 'rgba(255,107,107,0.4)',
   },
   toolbarBtnText: { color: '#aaa', fontSize: 13, fontWeight: '600' },
   titleInput: {
