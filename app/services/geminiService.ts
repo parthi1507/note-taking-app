@@ -55,3 +55,25 @@ export async function generateTags(content: string): Promise<string[]> {
     .filter((t) => t.length > 0)
     .slice(0, 5);
 }
+
+export async function transcribeAudio(audioBlob: Blob): Promise<string> {
+  const formData = new FormData();
+  formData.append('file', audioBlob, 'recording.webm');
+  formData.append('model', 'whisper-large-v3-turbo');
+  formData.append('language', 'en');
+
+  const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${API_KEY}` },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    if (response.status === 429) throw new Error('Rate limit reached. Please wait a moment.');
+    if (response.status === 401) throw new Error('API key not authorized.');
+    throw new Error(`Transcription error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return data.text?.trim() ?? '';
+}
