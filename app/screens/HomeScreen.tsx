@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  Alert,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../services/firebase';
@@ -53,10 +55,7 @@ export default function HomeScreen({ onNewNote, onEditNote, onLogout }: Props) {
   };
 
   const handleLogout = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: onLogout },
-    ]);
+    onLogout();
   };
 
   const displayed = filteredNotes();

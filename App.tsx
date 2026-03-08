@@ -53,9 +53,19 @@ export default function App() {
     });
   };
 
-  const handleLogout = async () => {
-    await logoutUser();
-    navigateTo('login');
+  const handleLogout = () => {
+    Animated.timing(fadeAnim, {
+      toValue: 0, duration: 150, useNativeDriver: true,
+    }).start(async () => {
+      try {
+        await logoutUser();
+      } finally {
+        setScreen('login');
+        Animated.timing(fadeAnim, {
+          toValue: 1, duration: 220, useNativeDriver: true,
+        }).start();
+      }
+    });
   };
 
   const openEditor = () => {

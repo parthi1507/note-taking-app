@@ -75,23 +75,36 @@ export async function searchLocations(query: string): Promise<LocationResult[]> 
 
 // ─── GPS current location ─────────────────────────────────────────────────────
 export function getCurrentLocation(): Promise<NoteLocation> {
-  return new Promise((resolve, reject) => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      reject(new Error('Geolocation is not supported by your browser.'));
-      return;
+  if (typeof navigator !== 'undefined' && navigator.geolocation) {
+    // Web
+    return new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(
+        async ({ coords }) => {
+          const { latitude: lat, longitude: lng } = coords;
+          try {
+            const address = await reverseGeocode(lat, lng);
+            resolve({ lat, lng, address });
+          } catch {
+            resolve({ lat, lng, address: `${lat.toFixed(4)}, ${lng.toFixed(4)}` });
+          }
+        },
+        (err) => reject(new Error(err.message)),
+        { timeout: 12000, maximumAge: 60000 }
+      );
+    });
+  }
+  // Native (expo-location)
+  return (async () => {
+    const Location = require('expo-location');
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') throw new Error('Location permission denied. Please allow location access.');
+    const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    const { latitude: lat, longitude: lng } = loc.coords;
+    try {
+      const address = await reverseGeocode(lat, lng);
+      return { lat, lng, address };
+    } catch {
+      return { lat, lng, address: `${lat.toFixed(4)}, ${lng.toFixed(4)}` };
     }
-    navigator.geolocation.getCurrentPosition(
-      async ({ coords }) => {
-        const { latitude: lat, longitude: lng } = coords;
-        try {
-          const address = await reverseGeocode(lat, lng);
-          resolve({ lat, lng, address });
-        } catch {
-          resolve({ lat, lng, address: `${lat.toFixed(4)}, ${lng.toFixed(4)}` });
-        }
-      },
-      (err) => reject(new Error(err.message)),
-      { timeout: 12000, maximumAge: 60000 }
-    );
-  });
+  })();
 }

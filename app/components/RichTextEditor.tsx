@@ -109,7 +109,12 @@ export default function RichTextEditor({
       insertTextRef.current = (text: string) => {
         if (!editorRef.current) return;
         editorRef.current.focus();
-        document.execCommand('insertText', false, '\n' + text);
+        try {
+          document.execCommand('insertText', false, '\n' + text);
+        } catch {
+          // Fallback: append text directly via innerHTML when execCommand is unavailable
+          editorRef.current.innerHTML = editorRef.current.innerHTML + '\n' + text;
+        }
         onChange(editorRef.current.innerHTML);
         setIsEmpty(false);
       };

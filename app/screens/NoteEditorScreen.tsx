@@ -14,7 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../services/firebase';
 import { createNote, updateNote, deleteNote } from '../services/noteService';
-import { generateSummary, generateTitle, generateTags, transcribeAudio } from '../services/geminiService';
+import { generateSummary, generateTitle, generateTags, transcribeAudio } from '../services/groqService';
 import { Note, NOTE_COLORS } from '../types/note';
 import RichTextEditor from '../components/RichTextEditor';
 import { getCurrentLocation, getNearbyPlaces, searchLocations, LocationResult } from '../services/locationService';
@@ -66,6 +66,7 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const insertTextRef = useRef<((text: string) => void) | null>(null);
+  const nativeRecordingRef = useRef<any>(null);
   const isEditing = !!note;
 
   const handleEditorSelectionChange = ({ formats, block }: { formats: Record<string, boolean>; block: string | null }) => {
@@ -135,10 +136,20 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
       if (savedSelectionRef.current) sel?.addRange(savedSelectionRef.current);
       // Insert a styled inline location chip at the cursor
       const safe = result.address.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      document.execCommand(
-        'insertHTML', false,
-        `<span contenteditable="false" style="display:inline-flex;align-items:center;gap:4px;color:#c4b5fd;background:rgba(108,71,255,0.18);border:1px solid rgba(108,71,255,0.4);padding:2px 10px 2px 6px;border-radius:14px;font-size:14px;white-space:nowrap;user-select:none;">📍 ${safe}</span>&#8203;`
-      );
+      try {
+        document.execCommand(
+          'insertHTML', false,
+          `<span contenteditable="false" style="display:inline-flex;align-items:center;gap:4px;color:#c4b5fd;background:rgba(108,71,255,0.18);border:1px solid rgba(108,71,255,0.4);padding:2px 10px 2px 6px;border-radius:14px;font-size:14px;white-space:nowrap;user-select:none;">📍 ${safe}</span>&#8203;`
+        );
+      } catch {
+        // Fallback: append location text directly
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0) {
+          const range = sel.getRangeAt(0);
+          range.deleteContents();
+          range.insertNode(document.createTextNode(`📍 ${result.address}`));
+        }
+      }
     }
   };
 
@@ -234,26 +245,64 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
 
   const handleVoiceRecord = async () => {
     if (Platform.OS !== 'web') {
-      Alert.alert('Not supported', 'Voice recording is available on web only.');
+      // Native: use expo-av
+      if (isRecording) {
+        try {
+          await nativeRecordingRef.current?.stopAndUnloadAsync();
+          const uri = nativeRecordingRef.current?.getURI();
+          nativeRecordingRef.current = null;
+          setIsRecording(false);
+          if (uri) {
+            setAiLoading('transcribe');
+            try {
+              const fileResponse = await fetch(uri);
+              const audioBlob = await fileResponse.blob();
+              const transcript = await transcribeAudio(audioBlob);
+              if (transcript) {
+                setContent((prev) => (prev ? `${prev}\n${transcript}` : transcript));
+              }
+            } catch (err: any) {
+              Alert.alert('Transcription Error', err.message ?? 'Failed to transcribe audio. Try again.');
+            } finally {
+              setAiLoading(null);
+            }
+          }
+        } catch {
+          setIsRecording(false);
+        }
+        return;
+      }
+      try {
+        const { Audio } = require('expo-av');
+        const { granted } = await Audio.requestPermissionsAsync();
+        if (!granted) {
+          Alert.alert('Permission required', 'Microphone access is needed for voice recording.');
+          return;
+        }
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+        const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+        nativeRecordingRef.current = recording;
+        setIsRecording(true);
+      } catch {
+        Alert.alert('Microphone Error', 'Could not access microphone. Please grant permission.');
+      }
       return;
     }
 
+    // Web: MediaRecorder
     if (isRecording) {
       mediaRecorderRef.current?.stop();
       setIsRecording(false);
       return;
     }
-
     try {
       const stream = await (navigator as any).mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new (window as any).MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
-
       mediaRecorder.ondataavailable = (e: any) => {
         if (e.data.size > 0) audioChunksRef.current.push(e.data);
       };
-
       mediaRecorder.onstop = async () => {
         stream.getTracks().forEach((t: any) => t.stop());
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
@@ -273,7 +322,6 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
           setAiLoading(null);
         }
       };
-
       mediaRecorder.start();
       setIsRecording(true);
     } catch {
@@ -424,16 +472,16 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
               { style: { display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' } },
 
               // Inline formats
-              btn('B', !!editorFormats['bold'], (e) => { e.preventDefault(); document.execCommand('bold', false, undefined); }, { fontWeight: 'bold' }),
-              btn('I', !!editorFormats['italic'], (e) => { e.preventDefault(); document.execCommand('italic', false, undefined); }, { fontStyle: 'italic' }),
-              btn('U', !!editorFormats['underline'], (e) => { e.preventDefault(); document.execCommand('underline', false, undefined); }, { textDecoration: 'underline' }),
-              btn('S', !!editorFormats['strikeThrough'], (e) => { e.preventDefault(); document.execCommand('strikeThrough', false, undefined); }, { textDecoration: 'line-through' }),
+              btn('B', !!editorFormats['bold'], (e) => { e.preventDefault(); try { document.execCommand('bold', false, undefined); } catch {} }, { fontWeight: 'bold' }),
+              btn('I', !!editorFormats['italic'], (e) => { e.preventDefault(); try { document.execCommand('italic', false, undefined); } catch {} }, { fontStyle: 'italic' }),
+              btn('U', !!editorFormats['underline'], (e) => { e.preventDefault(); try { document.execCommand('underline', false, undefined); } catch {} }, { textDecoration: 'underline' }),
+              btn('S', !!editorFormats['strikeThrough'], (e) => { e.preventDefault(); try { document.execCommand('strikeThrough', false, undefined); } catch {} }, { textDecoration: 'line-through' }),
 
               sep(),
 
               // Block formats
-              btn('H1', editorBlock === 'H1', (e) => { e.preventDefault(); document.execCommand('formatBlock', false, editorBlock === 'H1' ? 'P' : 'H1'); setEditorBlock(editorBlock === 'H1' ? null : 'H1'); }, { fontWeight: 'bold', fontSize: '15px' }),
-              btn('H2', editorBlock === 'H2', (e) => { e.preventDefault(); document.execCommand('formatBlock', false, editorBlock === 'H2' ? 'P' : 'H2'); setEditorBlock(editorBlock === 'H2' ? null : 'H2'); }, { fontWeight: 'bold', fontSize: '13px' }),
+              btn('H1', editorBlock === 'H1', (e) => { e.preventDefault(); try { document.execCommand('formatBlock', false, editorBlock === 'H1' ? 'P' : 'H1'); } catch {} setEditorBlock(editorBlock === 'H1' ? null : 'H1'); }, { fontWeight: 'bold', fontSize: '15px' }),
+              btn('H2', editorBlock === 'H2', (e) => { e.preventDefault(); try { document.execCommand('formatBlock', false, editorBlock === 'H2' ? 'P' : 'H2'); } catch {} setEditorBlock(editorBlock === 'H2' ? null : 'H2'); }, { fontWeight: 'bold', fontSize: '13px' }),
 
               sep(),
 
