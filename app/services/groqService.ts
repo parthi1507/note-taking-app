@@ -2,6 +2,8 @@ const API_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY;
 const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 async function ask(prompt: string): Promise<string> {
+  if (!API_KEY) throw new Error('Groq API key is not configured. Add EXPO_PUBLIC_GROQ_API_KEY to your .env file.');
+
   const response = await fetch(API_URL, {
     method: 'POST',
     headers: {
@@ -57,6 +59,8 @@ export async function generateTags(content: string): Promise<string[]> {
 }
 
 export async function transcribeAudio(audioBlob: Blob): Promise<string> {
+  if (!API_KEY) throw new Error('Groq API key is not configured. Add EXPO_PUBLIC_GROQ_API_KEY to your .env file.');
+
   const formData = new FormData();
   formData.append('file', audioBlob, 'recording.webm');
   formData.append('model', 'whisper-large-v3-turbo');

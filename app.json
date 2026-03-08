@@ -1,15 +1,15 @@
 {
   "expo": {
     "name": "note-taking-app",
-    "slug": "note-taking-app",
+    "slug": "note-taking-app-parthiban15",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0a0a14"
     },
     "ios": {
       "supportsTablet": true
@@ -21,7 +21,8 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.parthiban15.notetakingappparthiban15"
     },
     "web": {
       "favicon": "./assets/favicon.svg",
@@ -30,6 +31,26 @@
       "description": "My Notes - A modern note taking app",
       "themeColor": "#6c47ff",
       "backgroundColor": "#0a0a14"
+    },
+    "plugins": [
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Allow NoteApp to access your microphone for voice recording."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow NoteApp to access your location."
+        }
+      ],
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "dd3ec6a8-284a-43e5-9b5f-1b1698521be5"
+      }
     }
   }
 }
