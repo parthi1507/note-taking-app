@@ -25,7 +25,13 @@ function getAccentColor(hex: string): string {
 }
 
 export default function NoteCard({ note, onPress, onPin, onDelete, index = 0 }: Props) {
-  const preview = note.content.replace(/[#*`\-\[\]]/g, '').replace(/\n/g, ' ').trim().slice(0, 110);
+  const preview = note.content
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/[#*`\-\[\]]/g, '')
+    .replace(/\n/g, ' ')
+    .trim()
+    .slice(0, 110);
   const accentColor = getAccentColor(note.color);
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(20)).current;

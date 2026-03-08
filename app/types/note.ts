@@ -1,3 +1,9 @@
+export interface NoteLocation {
+  lat: number;
+  lng: number;
+  address: string;
+}
+
 export interface Note {
   id: string;
   title: string;
@@ -8,6 +14,7 @@ export interface Note {
   createdAt: string;
   updatedAt: string;
   userId: string;
+  location?: NoteLocation | null;
 }
 
 export type NoteColor =

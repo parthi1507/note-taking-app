@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,43 +9,148 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../services/firebase';
 import { createNote, updateNote, deleteNote } from '../services/noteService';
-import { generateSummary, generateTitle, generateTags } from '../services/geminiService';
+import { generateSummary, generateTitle, generateTags, transcribeAudio } from '../services/geminiService';
 import { Note, NOTE_COLORS } from '../types/note';
-import MarkdownPreview from '../components/MarkdownPreview';
-import { useVoiceInput } from '../hooks/useVoiceInput';
+import RichTextEditor from '../components/RichTextEditor';
+import { getCurrentLocation, getNearbyPlaces, searchLocations, LocationResult } from '../services/locationService';
+
+const stripHtml = (html: string) =>
+  html.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
 
 interface Props {
   note?: Note;
   initialTitle?: string;
   initialContent?: string;
   onBack: () => void;
+  isModal?: boolean;
+  onColorChange?: (color: string) => void;
 }
 
-type AiAction = 'summary' | 'title' | 'tags' | null;
+type AiAction = 'summary' | 'title' | 'tags' | 'transcribe' | null;
 
-export default function NoteEditorScreen({ note, initialTitle = '', initialContent = '', onBack }: Props) {
+export default function NoteEditorScreen({ note, initialTitle = '', initialContent = '', onBack, isModal = false, onColorChange }: Props) {
   const [title, setTitle] = useState(note?.title ?? initialTitle);
   const [content, setContent] = useState(note?.content ?? initialContent);
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>(note?.tags ?? []);
   const [color, setColor] = useState(note?.color ?? NOTE_COLORS[0]);
+
+  // Notify parent of the initial color and every change
+  const handleColorChange = (c: string) => {
+    setColor(c);
+    onColorChange?.(c);
+  };
+
+  // Sync initial color to parent on mount
+  React.useEffect(() => { onColorChange?.(note?.color ?? NOTE_COLORS[0]); }, []);
   const [saving, setSaving] = useState(false);
   const [aiLoading, setAiLoading] = useState<AiAction>(null);
-  const [previewMode, setPreviewMode] = useState(false);
   const [summary, setSummary] = useState('');
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
+  const [locationSearch, setLocationSearch] = useState('');
+  const [locationResults, setLocationResults] = useState<LocationResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [isNearbyResults, setIsNearbyResults] = useState(false);
+  const nearbyCache = useRef<LocationResult[]>([]);
+  const searchTimer = useRef<any>(null);
+  const savedSelectionRef = useRef<Range | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [editorFormats, setEditorFormats] = useState<Record<string, boolean>>({});
+  const [editorBlock, setEditorBlock] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const insertTextRef = useRef<((text: string) => void) | null>(null);
   const isEditing = !!note;
 
-  const { isListening, isSupported, toggleListening } = useVoiceInput({
-    onResult: (text) => setContent((prev) => prev + text),
-    onError: () => Alert.alert('Voice Error', 'Could not capture voice. Please try again.'),
-  });
+  const handleEditorSelectionChange = ({ formats, block }: { formats: Record<string, boolean>; block: string | null }) => {
+    setEditorFormats(formats);
+    setEditorBlock(block);
+  };
+
+  const openLocationPicker = () => {
+    setShowLocationPicker(true);
+    setLocationSearch('');
+    setLocationResults([]);
+    setIsNearbyResults(false);
+    // Silently fetch nearby places in the background
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        async ({ coords }) => {
+          const nearby = await getNearbyPlaces(coords.latitude, coords.longitude);
+          nearbyCache.current = nearby;
+          // Only show if user hasn't typed anything yet
+          setLocationResults((prev) => (prev.length === 0 ? nearby : prev));
+          setIsNearbyResults((prev) => (locationSearch === '' ? true : prev));
+        },
+        () => { /* silent fail — GPS not available */ },
+        { timeout: 5000, maximumAge: 300000 }
+      );
+    }
+  };
+
+  const handleLocationSearch = (text: string) => {
+    setLocationSearch(text);
+    clearTimeout(searchTimer.current);
+    if (!text.trim()) {
+      setLocationResults(nearbyCache.current);
+      setIsNearbyResults(nearbyCache.current.length > 0);
+      setSearchLoading(false);
+      return;
+    }
+    if (text.length < 2) return;
+    setSearchLoading(true);
+    searchTimer.current = setTimeout(async () => {
+      const results = await searchLocations(text);
+      setLocationResults(results);
+      setIsNearbyResults(false);
+      setSearchLoading(false);
+    }, 400);
+  };
+
+  const handleUseGPS = async () => {
+    setGpsLoading(true);
+    try {
+      const loc = await getCurrentLocation();
+      setLocation(loc);
+      closePicker();
+    } catch (err: any) {
+      Alert.alert('Location Error', err.message ?? 'Could not get location. Please allow access.');
+    } finally {
+      setGpsLoading(false);
+    }
+  };
+
+  const handleSelectLocation = (result: LocationResult) => {
+    closePicker();
+    if (Platform.OS === 'web') {
+      // Restore cursor position saved when the 📍 button was pressed
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      if (savedSelectionRef.current) sel?.addRange(savedSelectionRef.current);
+      // Insert a styled inline location chip at the cursor
+      const safe = result.address.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      document.execCommand(
+        'insertHTML', false,
+        `<span contenteditable="false" style="display:inline-flex;align-items:center;gap:4px;color:#c4b5fd;background:rgba(108,71,255,0.18);border:1px solid rgba(108,71,255,0.4);padding:2px 10px 2px 6px;border-radius:14px;font-size:14px;white-space:nowrap;user-select:none;">📍 ${safe}</span>&#8203;`
+      );
+    }
+  };
+
+  const closePicker = () => {
+    setShowLocationPicker(false);
+    setLocationSearch('');
+    setLocationResults([]);
+    clearTimeout(searchTimer.current);
+  };
 
   const handleSave = async () => {
-    if (!title.trim() && !content.trim()) {
+    if (!title.trim() && !stripHtml(content)) {
       Alert.alert('Empty Note', 'Please add a title or content before saving.');
       return;
     }
@@ -71,13 +176,13 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
   };
 
   const handleAiSummary = async () => {
-    if (!content.trim()) {
+    if (!stripHtml(content)) {
       Alert.alert('No content', 'Write some content first to summarize.');
       return;
     }
     setAiLoading('summary');
     try {
-      const result = await generateSummary(content);
+      const result = await generateSummary(stripHtml(content));
       setSummary(result);
     } catch {
       Alert.alert('AI Error', 'Failed to generate summary. Try again.');
@@ -87,13 +192,13 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
   };
 
   const handleAiTitle = async () => {
-    if (!content.trim()) {
+    if (!stripHtml(content)) {
       Alert.alert('No content', 'Write some content first to generate a title.');
       return;
     }
     setAiLoading('title');
     try {
-      const result = await generateTitle(content);
+      const result = await generateTitle(stripHtml(content));
       setTitle(result);
     } catch {
       Alert.alert('AI Error', 'Failed to generate title. Try again.');
@@ -103,13 +208,13 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
   };
 
   const handleAiTags = async () => {
-    if (!content.trim()) {
+    if (!stripHtml(content)) {
       Alert.alert('No content', 'Write some content first to generate tags.');
       return;
     }
     setAiLoading('tags');
     try {
-      const result = await generateTags(content);
+      const result = await generateTags(stripHtml(content));
       const merged = [...new Set([...tags, ...result])].slice(0, 5);
       setTags(merged);
     } catch {
@@ -117,10 +222,6 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
     } finally {
       setAiLoading(null);
     }
-  };
-
-  const insertMarkdown = (syntax: string) => {
-    setContent((prev) => prev + syntax);
   };
 
   const addTag = () => {
@@ -131,30 +232,69 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
 
   const removeTag = (tag: string) => setTags(tags.filter((t) => t !== tag));
 
+  const handleVoiceRecord = async () => {
+    if (Platform.OS !== 'web') {
+      Alert.alert('Not supported', 'Voice recording is available on web only.');
+      return;
+    }
+
+    if (isRecording) {
+      mediaRecorderRef.current?.stop();
+      setIsRecording(false);
+      return;
+    }
+
+    try {
+      const stream = await (navigator as any).mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new (window as any).MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e: any) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach((t: any) => t.stop());
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        setAiLoading('transcribe');
+        try {
+          const transcript = await transcribeAudio(audioBlob);
+          if (transcript) {
+            if (insertTextRef.current) {
+              insertTextRef.current(transcript);
+            } else {
+              setContent((prev) => (prev ? `${prev}\n${transcript}` : transcript));
+            }
+          }
+        } catch (err: any) {
+          Alert.alert('Transcription Error', err.message ?? 'Failed to transcribe audio. Try again.');
+        } finally {
+          setAiLoading(null);
+        }
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch {
+      Alert.alert('Microphone Error', 'Could not access microphone. Please grant permission.');
+    }
+  };
+
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, isModal && styles.containerModal]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       {/* Top Bar */}
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, isModal && styles.topBarModal]}>
         <TouchableOpacity onPress={onBack} style={styles.iconBtn}>
-          <Ionicons name="arrow-back" size={22} color="#fff" />
+          <Ionicons name={isModal ? 'close' : 'arrow-back'} size={22} color="#fff" />
         </TouchableOpacity>
 
         <Text style={styles.topTitle}>{isEditing ? 'Edit Note' : 'New Note'}</Text>
 
         <View style={styles.topActions}>
-          <TouchableOpacity
-            onPress={() => setPreviewMode((p) => !p)}
-            style={[styles.previewBtn, previewMode && styles.previewBtnActive]}
-          >
-            <Ionicons
-              name={previewMode ? 'create-outline' : 'eye-outline'}
-              size={18}
-              color={previewMode ? '#6c47ff' : '#888'}
-            />
-          </TouchableOpacity>
           {isEditing && (
             <TouchableOpacity onPress={handleDelete} style={styles.iconBtn}>
               <Ionicons name="trash-outline" size={20} color="#ff6b6b" />
@@ -184,7 +324,7 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
               <TouchableOpacity
                 key={c}
                 style={[styles.colorDot, { backgroundColor: c }, color === c && styles.colorDotSelected]}
-                onPress={() => setColor(c)}
+                onPress={() => handleColorChange(c)}
               />
             ))}
           </View>
@@ -232,6 +372,138 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
           </View>
         </View>
 
+        {/* Voice + Formatting toolbar row */}
+        <View style={styles.toolbarRow}>
+          {/* Voice button */}
+          <TouchableOpacity
+            style={[styles.voiceBtn, isRecording && styles.voiceBtnRecording]}
+            onPress={handleVoiceRecord}
+            disabled={aiLoading === 'transcribe'}
+          >
+            {aiLoading === 'transcribe' ? (
+              <>
+                <ActivityIndicator size="small" color="#fff" />
+                <Text style={styles.voiceBtnText}>Transcribing...</Text>
+              </>
+            ) : isRecording ? (
+              <>
+                <Ionicons name="stop-circle" size={18} color="#fff" />
+                <Text style={styles.voiceBtnText}>Stop</Text>
+              </>
+            ) : (
+              <Ionicons name="mic" size={18} color="#a78bfa" />
+            )}
+          </TouchableOpacity>
+
+          {/* Formatting toolbar — web only */}
+          {Platform.OS === 'web' && (() => {
+            const btn = (label: string, isActive: boolean, onMouseDown: (e: any) => void, extra: object = {}) =>
+              React.createElement('button', {
+                onMouseDown,
+                style: {
+                  background: isActive ? 'rgba(108,71,255,0.35)' : 'rgba(108,71,255,0.08)',
+                  border: `1px solid ${isActive ? 'rgba(108,71,255,0.65)' : 'rgba(108,71,255,0.28)'}`,
+                  borderRadius: '6px',
+                  color: '#a78bfa',
+                  cursor: 'pointer',
+                  padding: '5px 10px',
+                  fontSize: '13px',
+                  lineHeight: '1.2',
+                  fontFamily: 'inherit',
+                  minWidth: '30px',
+                  ...extra,
+                },
+              }, label);
+
+            const sep = () => React.createElement('div', {
+              style: { width: '1px', height: '20px', background: 'rgba(108,71,255,0.25)', margin: '0 2px' },
+            });
+
+            return React.createElement(
+              'div',
+              { style: { display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' } },
+
+              // Inline formats
+              btn('B', !!editorFormats['bold'], (e) => { e.preventDefault(); document.execCommand('bold', false, undefined); }, { fontWeight: 'bold' }),
+              btn('I', !!editorFormats['italic'], (e) => { e.preventDefault(); document.execCommand('italic', false, undefined); }, { fontStyle: 'italic' }),
+              btn('U', !!editorFormats['underline'], (e) => { e.preventDefault(); document.execCommand('underline', false, undefined); }, { textDecoration: 'underline' }),
+              btn('S', !!editorFormats['strikeThrough'], (e) => { e.preventDefault(); document.execCommand('strikeThrough', false, undefined); }, { textDecoration: 'line-through' }),
+
+              sep(),
+
+              // Block formats
+              btn('H1', editorBlock === 'H1', (e) => { e.preventDefault(); document.execCommand('formatBlock', false, editorBlock === 'H1' ? 'P' : 'H1'); setEditorBlock(editorBlock === 'H1' ? null : 'H1'); }, { fontWeight: 'bold', fontSize: '15px' }),
+              btn('H2', editorBlock === 'H2', (e) => { e.preventDefault(); document.execCommand('formatBlock', false, editorBlock === 'H2' ? 'P' : 'H2'); setEditorBlock(editorBlock === 'H2' ? null : 'H2'); }, { fontWeight: 'bold', fontSize: '13px' }),
+
+              sep(),
+
+              // Location insert button
+              btn('📍', showLocationPicker, (e) => {
+                e.preventDefault();
+                // Save cursor selection before picker steals focus
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount > 0) savedSelectionRef.current = sel.getRangeAt(0).cloneRange();
+                openLocationPicker();
+              }),
+
+            );
+          })()}
+        </View>
+
+        {/* Location picker — appears inline when 📍 button is pressed */}
+        {showLocationPicker && (
+          <View style={styles.locationPicker}>
+            <View style={styles.locationSearchRow}>
+              <Ionicons name="search-outline" size={15} color="#555" />
+              <TextInput
+                style={styles.locationSearchInput}
+                placeholder="Search any location..."
+                placeholderTextColor="#555"
+                value={locationSearch}
+                onChangeText={handleLocationSearch}
+                autoFocus
+              />
+              <TouchableOpacity onPress={handleUseGPS} style={styles.locationGpsBtn} disabled={gpsLoading}>
+                {gpsLoading
+                  ? <ActivityIndicator size="small" color="#6c47ff" />
+                  : <Ionicons name="locate-outline" size={18} color="#a78bfa" />
+                }
+              </TouchableOpacity>
+            </View>
+
+            {locationResults.length > 0 && (
+              <Text style={styles.locationResultsLabel}>
+                {isNearbyResults ? 'NEARBY' : 'RESULTS'}
+              </Text>
+            )}
+
+            {searchLoading && (
+              <View style={styles.locationSpinner}>
+                <ActivityIndicator size="small" color="#6c47ff" />
+              </View>
+            )}
+
+            {!searchLoading && locationResults.map((result, i) => (
+              <TouchableOpacity
+                key={i}
+                style={[styles.locationResultItem, i === locationResults.length - 1 && { borderBottomWidth: 0 }]}
+                onPress={() => handleSelectLocation(result)}
+              >
+                <Ionicons name={isNearbyResults ? 'location-outline' : 'navigate-outline'} size={14} color="#6c47ff" />
+                <Text style={styles.locationResultText} numberOfLines={2}>{result.address}</Text>
+              </TouchableOpacity>
+            ))}
+
+            {!searchLoading && locationSearch.length >= 2 && locationResults.length === 0 && (
+              <Text style={styles.locationNoResults}>No results found</Text>
+            )}
+
+            <TouchableOpacity style={styles.locationCancelBtn} onPress={closePicker}>
+              <Text style={styles.locationCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* AI Summary result */}
         {summary ? (
           <View style={styles.summaryBox}>
@@ -245,47 +517,6 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
           </View>
         ) : null}
 
-        {/* Markdown toolbar (edit mode only) */}
-        {!previewMode && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.toolbar}
-            contentContainerStyle={styles.toolbarContent}
-          >
-            {[
-              { label: 'H1', syntax: '\n# ' },
-              { label: 'H2', syntax: '\n## ' },
-              { label: 'B', syntax: '**text**' },
-              { label: 'I', syntax: '*text*' },
-              { label: '•', syntax: '\n- ' },
-              { label: '☐', syntax: '\n- [ ] ' },
-              { label: '`code`', syntax: '`code`' },
-              { label: '---', syntax: '\n---\n' },
-            ].map((item) => (
-              <TouchableOpacity
-                key={item.label}
-                style={styles.toolbarBtn}
-                onPress={() => insertMarkdown(item.syntax)}
-              >
-                <Text style={styles.toolbarBtnText}>{item.label}</Text>
-              </TouchableOpacity>
-            ))}
-            {isSupported && (
-              <TouchableOpacity
-                style={[styles.toolbarBtn, isListening && styles.toolbarBtnActive]}
-                onPress={toggleListening}
-              >
-                <Ionicons
-                  name={isListening ? 'stop-circle' : 'mic-outline'}
-                  size={16}
-                  color={isListening ? '#ff6b6b' : '#aaa'}
-                />
-              </TouchableOpacity>
-            )}
-          </ScrollView>
-        )}
-
         {/* Title */}
         <TextInput
           style={styles.titleInput}
@@ -296,22 +527,14 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
           multiline
         />
 
-        {/* Content — Edit or Preview */}
-        {previewMode ? (
-          <View style={styles.previewContainer}>
-            <MarkdownPreview content={content} />
-          </View>
-        ) : (
-          <TextInput
-            style={styles.contentInput}
-            placeholder={`Start writing...\n\nMarkdown supported:\n# Heading\n**bold** *italic*\n- bullet list\n- [ ] checkbox`}
-            placeholderTextColor="#444"
-            value={content}
-            onChangeText={setContent}
-            multiline
-            textAlignVertical="top"
-          />
-        )}
+        {/* Content Editor */}
+        <RichTextEditor
+          value={content}
+          onChange={setContent}
+          placeholder="Start writing..."
+          insertTextRef={insertTextRef}
+          onSelectionChange={handleEditorSelectionChange}
+        />
 
         {/* Tags */}
         <View style={styles.tagSection}>
@@ -348,6 +571,8 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0f0f1a', paddingTop: 56 },
+  containerModal: { paddingTop: 0 },
+  topBarModal: { paddingTop: 16 },
   topBar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingBottom: 16,
@@ -356,11 +581,6 @@ const styles = StyleSheet.create({
   iconBtn: { padding: 6 },
   topTitle: { color: '#fff', fontSize: 17, fontWeight: '600' },
   topActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  previewBtn: {
-    padding: 8, borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-  },
-  previewBtnActive: { backgroundColor: 'rgba(108,71,255,0.15)' },
   saveBtn: {
     backgroundColor: '#6c47ff', borderRadius: 10,
     paddingHorizontal: 16, paddingVertical: 8,
@@ -397,31 +617,10 @@ const styles = StyleSheet.create({
   summaryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   summaryLabel: { color: '#a78bfa', fontSize: 13, fontWeight: '600' },
   summaryText: { color: '#ccc', fontSize: 15, lineHeight: 24 },
-  toolbar: { marginHorizontal: -20 },
-  toolbarContent: {
-    paddingHorizontal: 20, gap: 8,
-    paddingVertical: 8,
-    borderTopWidth: 1, borderBottomWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-  },
-  toolbarBtn: {
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6,
-  },
-  toolbarBtnActive: {
-    backgroundColor: 'rgba(255,107,107,0.15)',
-    borderWidth: 1, borderColor: 'rgba(255,107,107,0.4)',
-  },
-  toolbarBtnText: { color: '#aaa', fontSize: 14, fontWeight: '600' },
   titleInput: {
     color: '#fff', fontSize: 26, fontWeight: '700',
     lineHeight: 34, outlineWidth: 0,
   } as any,
-  contentInput: {
-    color: '#ccc', fontSize: 16, lineHeight: 26,
-    minHeight: 240, outlineWidth: 0,
-  } as any,
-  previewContainer: { minHeight: 240 },
   tagSection: { gap: 10 },
   tagInputRow: {
     flexDirection: 'row', alignItems: 'center',
@@ -441,4 +640,54 @@ const styles = StyleSheet.create({
     borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5,
   },
   tagChipText: { color: '#a78bfa', fontSize: 14 },
+  locationPicker: {
+    backgroundColor: 'rgba(18,18,30,0.98)',
+    borderWidth: 1, borderColor: 'rgba(108,71,255,0.3)',
+    borderRadius: 14, overflow: 'hidden',
+  },
+  locationSearchRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 14, paddingVertical: 4,
+    borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  locationSearchInput: {
+    flex: 1, color: '#fff', fontSize: 15,
+    paddingVertical: 12, outlineWidth: 0,
+  } as any,
+  locationGpsBtn: { padding: 6 },
+  locationResultsLabel: {
+    color: '#555', fontSize: 11, fontWeight: '700',
+    letterSpacing: 1, textTransform: 'uppercase',
+    paddingHorizontal: 14, paddingTop: 10, paddingBottom: 4,
+  },
+  locationSpinner: { padding: 14, alignItems: 'center' },
+  locationResultItem: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+    paddingHorizontal: 14, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.04)',
+  },
+  locationResultText: { color: '#ccc', fontSize: 13, flex: 1, lineHeight: 20 },
+  locationNoResults: {
+    color: '#555', fontSize: 13, textAlign: 'center',
+    paddingVertical: 16,
+  },
+  locationCancelBtn: {
+    alignItems: 'center', paddingVertical: 12,
+    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)',
+  },
+  locationCancelText: { color: '#666', fontSize: 14 },
+  toolbarRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+  },
+  voiceBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: 'rgba(108,71,255,0.15)',
+    borderWidth: 1, borderColor: 'rgba(108,71,255,0.3)',
+    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8,
+  },
+  voiceBtnRecording: {
+    backgroundColor: 'rgba(239,68,68,0.2)',
+    borderColor: 'rgba(239,68,68,0.5)',
+  },
+  voiceBtnText: { color: '#a78bfa', fontSize: 13, fontWeight: '600' },
 });
