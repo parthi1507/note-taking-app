@@ -47,6 +47,13 @@
           "locationWhenInUsePermission": "Allow NoteApp to access your location."
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow NoteApp to access your photos to scan business cards.",
+          "cameraPermission": "Allow NoteApp to take photos of business cards."
+        }
+      ],
       "expo-font"
     ],
     "extra": {

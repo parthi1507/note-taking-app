@@ -14,7 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../services/firebase';
 import { createNote, updateNote, deleteNote } from '../services/noteService';
-import { generateSummary, generateTitle, generateTags, transcribeAudio, transcribeAudioNative } from '../services/groqService';
+import { generateSummary, generateTitle, generateTags, transcribeAudio, transcribeAudioNative, extractBusinessCard } from '../services/groqService';
 import { Note, NOTE_COLORS } from '../types/note';
 import RichTextEditor from '../components/RichTextEditor';
 import { getCurrentLocation, getNearbyPlaces, searchLocations, LocationResult } from '../services/locationService';
@@ -31,7 +31,7 @@ interface Props {
   onColorChange?: (color: string) => void;
 }
 
-type AiAction = 'summary' | 'title' | 'tags' | 'transcribe' | null;
+type AiAction = 'summary' | 'title' | 'tags' | 'transcribe' | 'scanCard' | null;
 
 export default function NoteEditorScreen({ note, initialTitle = '', initialContent = '', onBack, isModal = false, onColorChange }: Props) {
   const [title, setTitle] = useState(note?.title ?? initialTitle);
@@ -67,6 +67,7 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
   const audioChunksRef = useRef<Blob[]>([]);
   const insertTextRef = useRef<((text: string) => void) | null>(null);
   const applyFormatRef = useRef<((format: string) => void) | null>(null);
+  const fileInputRef = useRef<any>(null);
   const nativeRecordingRef = useRef<any>(null);
   const isEditing = !!note;
 
@@ -269,6 +270,131 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
     }
   };
 
+  const processScanResult = async (base64: string, mimeType = 'image/jpeg') => {
+    setAiLoading('scanCard');
+    try {
+      const extracted = await extractBusinessCard(base64, mimeType);
+      if (!extracted || extracted.trim() === '📇 Business Card') {
+        Alert.alert('No Data Found', 'Could not extract any information from the card. Make sure the image is clear and well-lit.');
+        return;
+      }
+      if (Platform.OS === 'web' && insertTextRef.current) {
+        // On web the editor is a contentEditable div that ignores value prop changes
+        // after initialization — use insertTextRef to write directly into the DOM.
+        insertTextRef.current(extracted);
+      } else {
+        // On mobile the editor is a TextInput driven by the content state.
+        setContent((prev) => {
+          const plain = prev.includes('<') ? stripHtml(prev) : prev;
+          return plain ? `${plain}\n\n${extracted}` : extracted;
+        });
+      }
+    } catch (err: any) {
+      Alert.alert('Scan Error', err.message ?? 'Failed to scan card. Try again.');
+    } finally {
+      setAiLoading(null);
+    }
+  };
+
+  // Compress image to max 1024px on web using canvas before sending to AI
+  const compressImageWeb = (dataUrl: string, mimeType: string): Promise<string> =>
+    new Promise((resolve) => {
+      const img = new (window as any).Image();
+      img.onload = () => {
+        const MAX = 1024;
+        let { width, height } = img;
+        if (width > MAX || height > MAX) {
+          if (width > height) { height = Math.round((height * MAX) / width); width = MAX; }
+          else { width = Math.round((width * MAX) / height); height = MAX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d')?.drawImage(img, 0, 0, width, height);
+        const compressed = canvas.toDataURL(mimeType, 0.82).split(',')[1];
+        resolve(compressed);
+      };
+      img.onerror = () => resolve(dataUrl.split(',')[1]);
+      img.src = dataUrl;
+    });
+
+  const handleScanCard = () => {
+    if (Platform.OS === 'web') {
+      fileInputRef.current?.click();
+      return;
+    }
+    // Native: show choice — camera or gallery
+    Alert.alert('Scan Business Card', 'Choose an option', [
+      {
+        text: '📷 Take Photo',
+        onPress: () => launchNativePicker('camera'),
+      },
+      {
+        text: '🖼️ Choose from Gallery',
+        onPress: () => launchNativePicker('gallery'),
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const launchNativePicker = async (source: 'camera' | 'gallery') => {
+    try {
+      const ImagePicker = require('expo-image-picker');
+
+      if (source === 'camera') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission required', 'Camera access is needed to take a photo.');
+          return;
+        }
+        const result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ['images'],
+          quality: 0.85,
+          base64: true,
+        });
+        if (!result.canceled && result.assets[0]?.base64) {
+          await processScanResult(result.assets[0].base64, result.assets[0].mimeType ?? 'image/jpeg');
+        }
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission required', 'Photo library access is needed to scan a business card.');
+          return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          quality: 0.85,
+          base64: true,
+        });
+        if (!result.canceled && result.assets[0]?.base64) {
+          await processScanResult(result.assets[0].base64, result.assets[0].mimeType ?? 'image/jpeg');
+        }
+      }
+    } catch (err: any) {
+      Alert.alert('Scan Error', err.message ?? 'Could not open image picker.');
+    }
+  };
+
+  const handleWebFileChange = async (e: any) => {
+    const file = e.target?.files?.[0];
+    if (!file) return;
+    // Reset early so the same file can be re-selected
+    e.target.value = '';
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const dataUrl = evt.target?.result as string;
+        // Compress to max 1024px to keep payload small for the AI
+        const base64 = await compressImageWeb(dataUrl, file.type || 'image/jpeg');
+        await processScanResult(base64, file.type || 'image/jpeg');
+      } catch (err: any) {
+        Alert.alert('Scan Error', err.message ?? 'Failed to read image.');
+      }
+    };
+    reader.onerror = () => Alert.alert('Scan Error', 'Failed to read the image file.');
+    reader.readAsDataURL(file);
+  };
+
   const addTag = () => {
     const t = tagInput.trim().toLowerCase().replace(/\s+/g, '-');
     if (t && !tags.includes(t) && tags.length < 5) setTags([...tags, t]);
@@ -449,8 +575,29 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
                 <Text style={styles.aiBtnText}>Summarize</Text>
               )}
             </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.aiBtn}
+              onPress={handleScanCard}
+              disabled={!!aiLoading}
+            >
+              {aiLoading === 'scanCard' ? (
+                <ActivityIndicator size="small" color="#6c47ff" />
+              ) : (
+                <Text style={styles.aiBtnText}>📇 Scan Card</Text>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
+
+        {/* Hidden file input for web card scanning */}
+        {Platform.OS === 'web' && React.createElement('input', {
+          ref: fileInputRef,
+          type: 'file',
+          accept: 'image/*',
+          style: { display: 'none' },
+          onChange: handleWebFileChange,
+        })}
 
         {/* Voice + Formatting toolbar row */}
         <View style={styles.toolbarRow}>
