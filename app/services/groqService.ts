@@ -1,7 +1,9 @@
+import { Note } from '../types/note';
+
 const API_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY;
 const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
-async function ask(prompt: string): Promise<string> {
+async function ask(prompt: string, maxTokens = 256): Promise<string> {
   if (!API_KEY) throw new Error('Groq API key is not configured. Add EXPO_PUBLIC_GROQ_API_KEY to your .env file.');
 
   const response = await fetch(API_URL, {
@@ -14,7 +16,7 @@ async function ask(prompt: string): Promise<string> {
       model: 'llama-3.1-8b-instant',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
-      max_tokens: 256,
+      max_tokens: maxTokens,
     }),
   });
 
@@ -338,4 +340,49 @@ export async function transcribeAudioFileNative(
   }
 
   return results.join(' ');
+}
+
+// ── AI Chat with Notes ────────────────────────────────────────────────────────
+
+const stripHtml = (html: string) =>
+  html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+
+export async function chatWithNotes(
+  question: string,
+  notes: Note[],
+): Promise<{ answer: string; sources: string[] }> {
+  if (!notes.length) {
+    return {
+      answer: "You don't have any notes yet. Create some notes first!",
+      sources: [],
+    };
+  }
+
+  const notesContext = notes
+    .map((n, i) => {
+      const title = n.title || 'Untitled';
+      const content = stripHtml(n.content).slice(0, 400);
+      const tags = n.tags.length ? ` | Tags: ${n.tags.join(', ')}` : '';
+      const date = new Date(n.updatedAt).toLocaleDateString();
+      return `[Note ${i + 1}] "${title}" (${date})${tags}\n${content}`;
+    })
+    .join('\n\n');
+
+  const prompt =
+    `You are an AI assistant that answers questions based on the user's notes. ` +
+    `Answer using ONLY the notes below. Be concise. ` +
+    `At the end, on a new line write "SOURCES:" and list the exact note titles you used, comma-separated. Write "SOURCES: none" if no note was relevant.\n\n` +
+    `NOTES:\n${notesContext}\n\nQUESTION: ${question}`;
+
+  const raw = await ask(prompt, 512);
+
+  const sourceMatch = raw.match(/SOURCES:\s*(.+)$/im);
+  const sourcesRaw = sourceMatch?.[1]?.trim() ?? '';
+  const sources =
+    !sourcesRaw || sourcesRaw.toLowerCase() === 'none'
+      ? []
+      : sourcesRaw.split(',').map((s) => s.trim()).filter(Boolean);
+
+  const answer = raw.replace(/\nSOURCES:.*$/im, '').trim();
+  return { answer, sources };
 }

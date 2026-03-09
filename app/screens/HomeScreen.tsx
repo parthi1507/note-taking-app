@@ -37,11 +37,12 @@ interface Props {
   onNewNote: (template?: NoteTemplate) => void;
   onEditNote: (note: Note) => void;
   onLogout: () => void;
+  onOpenChat: (notes: Note[], context: string) => void;
 }
 
 type ActiveTab = 'personal' | 'team';
 
-export default function HomeScreen({ onNewNote, onEditNote, onLogout }: Props) {
+export default function HomeScreen({ onNewNote, onEditNote, onLogout, onOpenChat }: Props) {
   const { notes, searchQuery, setNotes, setSearchQuery, filteredNotes } = useNoteStore();
   const {
     workspaces, activeWorkspace, workspaceNotes, workspaceSearchQuery,
@@ -287,9 +288,24 @@ export default function HomeScreen({ onNewNote, onEditNote, onLogout }: Props) {
             </Text>
           </View>
         )}
-        <TouchableOpacity onPress={onLogout} style={styles.avatarBtn}>
-          <Ionicons name="log-out-outline" size={20} color="#a78bfa" />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          {(activeTab === 'personal' || (activeTab === 'team' && activeWorkspace)) && (
+            <TouchableOpacity
+              style={styles.avatarBtn}
+              onPress={() => {
+                const isInsideWorkspace = activeTab === 'team' && activeWorkspace;
+                const chatNotes = isInsideWorkspace ? workspaceNotes : notes;
+                const context = isInsideWorkspace ? activeWorkspace.name : 'Personal Notes';
+                onOpenChat(chatNotes, context);
+              }}
+            >
+              <Ionicons name="sparkles-outline" size={20} color="#a78bfa" />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={onLogout} style={styles.avatarBtn}>
+            <Ionicons name="log-out-outline" size={20} color="#a78bfa" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Tab bar */}
@@ -747,6 +763,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(108,71,255,0.15)', borderRadius: 10, padding: 8,
     borderWidth: 1, borderColor: 'rgba(108,71,255,0.3)',
   },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   appLabel: { color: '#6c47ff', fontSize: 13, fontWeight: '700', letterSpacing: 2, marginBottom: 4 },
   greeting: { color: '#fff', fontSize: 34, fontWeight: '800', letterSpacing: -0.5 },
   avatarBtn: {
@@ -862,7 +879,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(108,71,255,0.3)',
     borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
   },
-  inviteBtnText: { color: '#a78bfa', fontSize: 13, fontWeight: '600' },
+  inviteBtnText: { color: '#a78bfa', fontSize: 15, fontWeight: '600' },
   invitePanel: {
     marginHorizontal: 24, marginBottom: 12,
     backgroundColor: 'rgba(108,71,255,0.08)',
