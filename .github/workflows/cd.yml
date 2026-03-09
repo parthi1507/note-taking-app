@@ -29,7 +29,7 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Publish OTA update
-        run: eas update --auto --non-interactive --environment production
+        run: eas update --auto --non-interactive --environment production --platform android
         env:
           EXPO_PUBLIC_GROQ_API_KEY: ${{ secrets.EXPO_PUBLIC_GROQ_API_KEY }}
           NPM_CONFIG_LEGACY_PEER_DEPS: true

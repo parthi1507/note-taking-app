@@ -63,7 +63,7 @@ function linkifyTextNodes(editorEl: HTMLElement) {
 
   const nodes: Text[] = [];
   let n: Node | null;
-  while ((n = walker.nextNode())) nodes.push(n as Text);
+  while ((n = walker.nextNode())) nodes.push(n as unknown as Text);
 
   nodes.forEach((textNode) => {
     URL_PATTERN.lastIndex = 0;
@@ -82,7 +82,7 @@ function linkifyTextNodes(editorEl: HTMLElement) {
       last = match.index + match[0].length;
     }
     if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
-    textNode.parentNode?.replaceChild(frag, textNode);
+    (textNode.parentNode as unknown as Element)?.replaceChild(frag, textNode as unknown as Node);
   });
 }
 

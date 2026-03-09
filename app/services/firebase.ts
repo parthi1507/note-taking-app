@@ -21,7 +21,6 @@ const app = initializeApp(firebaseConfig);
 function buildAuth() {
   if (Platform.OS !== 'web') {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { getReactNativePersistence } = require('@firebase/auth') as any;
       if (getReactNativePersistence) {
         return initializeAuth(app, { persistence: getReactNativePersistence(AsyncStorage) });
