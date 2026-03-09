@@ -54,7 +54,8 @@
           "cameraPermission": "Allow NoteApp to take photos of business cards."
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-document-picker"
     ],
     "extra": {
       "eas": {

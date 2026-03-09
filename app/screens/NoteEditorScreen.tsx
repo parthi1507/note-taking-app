@@ -14,7 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../services/firebase';
 import { createNote, updateNote, deleteNote } from '../services/noteService';
-import { generateSummary, generateTitle, generateTags, transcribeAudio, transcribeAudioNative, extractBusinessCard } from '../services/groqService';
+import { generateSummary, generateTitle, generateTags, transcribeAudio, transcribeAudioNative, transcribeAudioFile, extractBusinessCard } from '../services/groqService';
 import { Note, NOTE_COLORS } from '../types/note';
 import RichTextEditor from '../components/RichTextEditor';
 import { getCurrentLocation, getNearbyPlaces, searchLocations, LocationResult } from '../services/locationService';
@@ -31,7 +31,7 @@ interface Props {
   onColorChange?: (color: string) => void;
 }
 
-type AiAction = 'summary' | 'title' | 'tags' | 'transcribe' | 'scanCard' | null;
+type AiAction = 'summary' | 'title' | 'tags' | 'transcribe' | 'uploadAudio' | 'scanCard' | null;
 
 export default function NoteEditorScreen({ note, initialTitle = '', initialContent = '', onBack, isModal = false, onColorChange }: Props) {
   const [title, setTitle] = useState(note?.title ?? initialTitle);
@@ -68,6 +68,8 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
   const insertTextRef = useRef<((text: string) => void) | null>(null);
   const applyFormatRef = useRef<((format: string) => void) | null>(null);
   const fileInputRef = useRef<any>(null);
+  const audioFileInputRef = useRef<any>(null);
+  const [uploadProgress, setUploadProgress] = useState('');
   const nativeRecordingRef = useRef<any>(null);
   const isEditing = !!note;
 
@@ -395,6 +397,77 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
     reader.readAsDataURL(file);
   };
 
+  const handleUploadAudio = () => {
+    if (Platform.OS === 'web') {
+      audioFileInputRef.current?.click();
+      return;
+    }
+    // Native: use expo-document-picker
+    handleNativeAudioUpload();
+  };
+
+  const handleWebAudioUpload = async (e: any) => {
+    const file = e.target?.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setAiLoading('uploadAudio');
+    setUploadProgress('Preparing…');
+    try {
+      const transcript = await transcribeAudioFile(file, (msg) => setUploadProgress(msg));
+      if (transcript) {
+        if (insertTextRef.current) {
+          insertTextRef.current(transcript);
+        } else {
+          setContent((prev) => (prev ? `${prev}\n\n${transcript}` : transcript));
+        }
+      } else {
+        Alert.alert('No Speech Found', 'Could not detect any speech in this audio file.');
+      }
+    } catch (err: any) {
+      Alert.alert('Transcription Error', err.message ?? 'Failed to transcribe. Try again.');
+    } finally {
+      setAiLoading(null);
+      setUploadProgress('');
+    }
+  };
+
+  const handleNativeAudioUpload = async () => {
+    try {
+      const DocumentPicker = require('expo-document-picker');
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'audio/*',
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      const MAX_BYTES = 24 * 1024 * 1024;
+      if (asset.size && asset.size > MAX_BYTES) {
+        Alert.alert(
+          'File Too Large',
+          `This file is ${(asset.size / 1024 / 1024).toFixed(0)} MB. The maximum is 24 MB.\n\nTip: Export your recording at 64 kbps MP3 or AAC — a 30-min file will then be ~14 MB.`,
+        );
+        return;
+      }
+      setAiLoading('uploadAudio');
+      setUploadProgress('Transcribing audio…');
+      try {
+        const transcript = await transcribeAudioNative(asset.uri);
+        if (transcript) {
+          setContent((prev) => (prev ? `${prev}\n\n${transcript}` : transcript));
+        } else {
+          Alert.alert('No Speech Found', 'Could not detect any speech in this audio file.');
+        }
+      } catch (err: any) {
+        Alert.alert('Transcription Error', err.message ?? 'Failed to transcribe. Try again.');
+      } finally {
+        setAiLoading(null);
+        setUploadProgress('');
+      }
+    } catch (err: any) {
+      Alert.alert('File Error', err.message ?? 'Could not open file picker.');
+    }
+  };
+
   const addTag = () => {
     const t = tagInput.trim().toLowerCase().replace(/\s+/g, '-');
     if (t && !tags.includes(t) && tags.length < 5) setTags([...tags, t]);
@@ -599,6 +672,15 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
           onChange: handleWebFileChange,
         })}
 
+        {/* Hidden file input for web audio upload */}
+        {Platform.OS === 'web' && React.createElement('input', {
+          ref: audioFileInputRef,
+          type: 'file',
+          accept: 'audio/*',
+          style: { display: 'none' },
+          onChange: handleWebAudioUpload,
+        })}
+
         {/* Voice + Formatting toolbar row */}
         <View style={styles.toolbarRow}>
           {/* Voice button */}
@@ -619,6 +701,19 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
               </>
             ) : (
               <Ionicons name="mic" size={18} color="#a78bfa" />
+            )}
+          </TouchableOpacity>
+
+          {/* Upload Audio button */}
+          <TouchableOpacity
+            style={[styles.voiceBtn, aiLoading === 'uploadAudio' && styles.voiceBtnRecording]}
+            onPress={handleUploadAudio}
+            disabled={!!aiLoading || isRecording}
+          >
+            {aiLoading === 'uploadAudio' ? (
+              <ActivityIndicator size="small" color="#a78bfa" />
+            ) : (
+              <Ionicons name="cloud-upload-outline" size={18} color="#a78bfa" />
             )}
           </TouchableOpacity>
 
@@ -697,6 +792,11 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
             </View>
           )}
         </View>
+
+        {/* Upload progress indicator */}
+        {aiLoading === 'uploadAudio' && uploadProgress ? (
+          <Text style={styles.uploadProgressText}>{uploadProgress}</Text>
+        ) : null}
 
         {/* Location picker — appears inline when 📍 button is pressed */}
         {showLocationPicker && (
@@ -951,5 +1051,11 @@ const styles = StyleSheet.create({
   mobileToolbarBtnText: { color: '#a78bfa', fontSize: 13 },
   mobileToolbarSep: {
     width: 1, height: 20, backgroundColor: 'rgba(108,71,255,0.25)', marginHorizontal: 2,
+  },
+  uploadProgressText: {
+    color: '#a78bfa',
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginTop: -8,
   },
 });
