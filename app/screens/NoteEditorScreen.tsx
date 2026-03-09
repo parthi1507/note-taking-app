@@ -278,10 +278,17 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
         Alert.alert('No Data Found', 'Could not extract any information from the card. Make sure the image is clear and well-lit.');
         return;
       }
-      setContent((prev) => {
-        const plain = prev.includes('<') ? stripHtml(prev) : prev;
-        return plain ? `${plain}\n\n${extracted}` : extracted;
-      });
+      if (Platform.OS === 'web' && insertTextRef.current) {
+        // On web the editor is a contentEditable div that ignores value prop changes
+        // after initialization — use insertTextRef to write directly into the DOM.
+        insertTextRef.current(extracted);
+      } else {
+        // On mobile the editor is a TextInput driven by the content state.
+        setContent((prev) => {
+          const plain = prev.includes('<') ? stripHtml(prev) : prev;
+          return plain ? `${plain}\n\n${extracted}` : extracted;
+        });
+      }
     } catch (err: any) {
       Alert.alert('Scan Error', err.message ?? 'Failed to scan card. Try again.');
     } finally {
