@@ -32,6 +32,7 @@ import TemplatePickerModal from '../components/TemplatePickerModal';
 import { Note } from '../types/note';
 import { Workspace } from '../types/workspace';
 import { NoteTemplate } from '../data/templates';
+import { generateWeeklyReport } from '../services/groqService';
 
 interface Props {
   onNewNote: (template?: NoteTemplate) => void;
@@ -66,6 +67,11 @@ export default function HomeScreen({ onNewNote, onEditNote, onLogout, onOpenChat
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [joinCode, setJoinCode] = useState('');
   const [joinLoading, setJoinLoading] = useState(false);
+
+  // Weekly report
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportText, setReportText] = useState('');
+  const [reportLoading, setReportLoading] = useState(false);
 
   // Invite code session
   const [inviteCodeData, setInviteCodeData] = useState<{ code: string; expiresAt: Date } | null>(null);
@@ -144,6 +150,26 @@ export default function HomeScreen({ onNewNote, onEditNote, onLogout, onOpenChat
       Alert.alert('Error', 'Failed to generate invite code. Try again.');
     } finally {
       setGeneratingCode(false);
+    }
+  };
+
+  const handleWeeklyReport = async (sourceNotes: Note[]) => {
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    const weekNotes = sourceNotes.filter((n) => new Date(n.updatedAt) >= oneWeekAgo);
+    if (!weekNotes.length) {
+      Alert.alert('No Notes', 'No notes found from the past 7 days.');
+      return;
+    }
+    setReportLoading(true);
+    setShowReportModal(true);
+    try {
+      const report = await generateWeeklyReport(weekNotes);
+      setReportText(report);
+    } catch (e: any) {
+      setReportText('Failed to generate report. Please try again.');
+    } finally {
+      setReportLoading(false);
     }
   };
 
@@ -290,17 +316,25 @@ export default function HomeScreen({ onNewNote, onEditNote, onLogout, onOpenChat
         )}
         <View style={styles.headerActions}>
           {(activeTab === 'personal' || (activeTab === 'team' && activeWorkspace)) && (
-            <TouchableOpacity
-              style={styles.avatarBtn}
-              onPress={() => {
-                const isInsideWorkspace = activeTab === 'team' && activeWorkspace;
-                const chatNotes = isInsideWorkspace ? workspaceNotes : notes;
-                const context = isInsideWorkspace ? activeWorkspace.name : 'Personal Notes';
-                onOpenChat(chatNotes, context);
-              }}
-            >
-              <Ionicons name="sparkles-outline" size={20} color="#a78bfa" />
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity
+                style={styles.avatarBtn}
+                onPress={() => handleWeeklyReport(activeTab === 'team' && activeWorkspace ? workspaceNotes : notes)}
+              >
+                <Ionicons name="bar-chart-outline" size={20} color="#a78bfa" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.avatarBtn}
+                onPress={() => {
+                  const isInsideWorkspace = activeTab === 'team' && activeWorkspace;
+                  const chatNotes = isInsideWorkspace ? workspaceNotes : notes;
+                  const context = isInsideWorkspace ? activeWorkspace.name : 'Personal Notes';
+                  onOpenChat(chatNotes, context);
+                }}
+              >
+                <Ionicons name="sparkles-outline" size={20} color="#a78bfa" />
+              </TouchableOpacity>
+            </>
           )}
           <TouchableOpacity onPress={onLogout} style={styles.avatarBtn}>
             <Ionicons name="log-out-outline" size={20} color="#a78bfa" />
@@ -657,6 +691,55 @@ export default function HomeScreen({ onNewNote, onEditNote, onLogout, onOpenChat
         </View>
       </Modal>
 
+      {/* ── WEEKLY STATUS REPORT MODAL ── */}
+      <Modal
+        visible={showReportModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowReportModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, styles.reportModalCard]}>
+            <View style={styles.reportModalHeader}>
+              <View style={styles.reportModalHeaderLeft}>
+                <Ionicons name="bar-chart-outline" size={20} color="#a78bfa" />
+                <Text style={styles.modalTitle}>Weekly Status Report</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowReportModal(false)}>
+                <Ionicons name="close" size={22} color="#888" />
+              </TouchableOpacity>
+            </View>
+            {reportLoading ? (
+              <View style={styles.reportLoading}>
+                <ActivityIndicator size="large" color="#6c47ff" />
+                <Text style={styles.reportLoadingText}>Generating your report...</Text>
+              </View>
+            ) : (
+              <>
+                <ScrollView style={styles.reportScroll} showsVerticalScrollIndicator={false}>
+                  <Text style={styles.reportText}>{reportText}</Text>
+                </ScrollView>
+                <TouchableOpacity
+                  style={styles.reportCopyBtn}
+                  onPress={() => {
+                    if (Platform.OS === 'web') {
+                      (navigator as any).clipboard?.writeText(reportText)
+                        .then(() => Alert.alert('Copied!', 'Report copied to clipboard.'))
+                        .catch(() => Alert.alert('Report', reportText));
+                    } else {
+                      Alert.alert('Weekly Report', reportText);
+                    }
+                  }}
+                >
+                  <Ionicons name="copy-outline" size={18} color="#fff" />
+                  <Text style={styles.reportCopyBtnText}>Copy Report</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
       {/* ── JOIN WORKSPACE MODAL ── */}
       <Modal
         visible={showJoinModal}
@@ -941,4 +1024,30 @@ const styles = StyleSheet.create({
   },
   modalBtnDisabled: { opacity: 0.5 },
   modalConfirmText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+
+  // Weekly Report Button
+  weeklyReportBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginHorizontal: 24, marginBottom: 16,
+    backgroundColor: 'rgba(108,71,255,0.12)',
+    borderWidth: 1, borderColor: 'rgba(108,71,255,0.3)',
+    borderRadius: 14, paddingVertical: 12, paddingHorizontal: 16,
+  },
+  weeklyReportBtnText: { color: '#a78bfa', fontSize: 14, fontWeight: '600', flex: 1 },
+
+  // Weekly Report Modal
+  reportModalCard: { maxHeight: '85%', gap: 16 },
+  reportModalHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+  },
+  reportModalHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  reportLoading: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40, gap: 16 },
+  reportLoadingText: { color: '#a78bfa', fontSize: 15 },
+  reportScroll: { maxHeight: 420 },
+  reportText: { color: '#e0e0f0', fontSize: 14, lineHeight: 22 },
+  reportCopyBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#6c47ff', borderRadius: 14, paddingVertical: 14, marginTop: 4,
+  },
+  reportCopyBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });

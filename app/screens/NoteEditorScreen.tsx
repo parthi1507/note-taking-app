@@ -686,6 +686,7 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
                 <Text style={styles.aiBtnText}>📇 Scan Card</Text>
               )}
             </TouchableOpacity>
+
           </View>
         </View>
 
@@ -940,6 +941,7 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
           )}
         </View>
       </ScrollView>
+
     </KeyboardAvoidingView>
   );
 }
@@ -1099,4 +1101,5 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: -8,
   },
+
 });
