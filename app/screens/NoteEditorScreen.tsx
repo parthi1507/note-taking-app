@@ -14,7 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../services/firebase';
 import { createNote, updateNote, deleteNote } from '../services/noteService';
-import { generateSummary, generateTitle, generateTags, transcribeAudio, transcribeAudioNative, transcribeAudioFile, extractBusinessCard } from '../services/groqService';
+import { generateSummary, generateTitle, generateTags, transcribeAudio, transcribeAudioNative, transcribeAudioFile, transcribeAudioFileNative, extractBusinessCard } from '../services/groqService';
 import { Note, NOTE_COLORS } from '../types/note';
 import RichTextEditor from '../components/RichTextEditor';
 import { getCurrentLocation, getNearbyPlaces, searchLocations, LocationResult } from '../services/locationService';
@@ -440,18 +440,16 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
       });
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
-      const MAX_BYTES = 24 * 1024 * 1024;
-      if (asset.size && asset.size > MAX_BYTES) {
-        Alert.alert(
-          'File Too Large',
-          `This file is ${(asset.size / 1024 / 1024).toFixed(0)} MB. The maximum is 24 MB.\n\nTip: Export your recording at 64 kbps MP3 or AAC — a 30-min file will then be ~14 MB.`,
-        );
-        return;
-      }
+      const fileSize = asset.size ?? 0;
       setAiLoading('uploadAudio');
-      setUploadProgress('Transcribing audio…');
+      setUploadProgress('Preparing…');
       try {
-        const transcript = await transcribeAudioNative(asset.uri);
+        // transcribeAudioFileNative handles any file size via 20 MB byte-range chunks
+        const transcript = await transcribeAudioFileNative(
+          asset.uri,
+          fileSize,
+          (msg) => setUploadProgress(msg),
+        );
         if (transcript) {
           setContent((prev) => (prev ? `${prev}\n\n${transcript}` : transcript));
         } else {

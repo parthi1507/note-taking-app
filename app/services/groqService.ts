@@ -145,11 +145,11 @@ export async function extractBusinessCard(imageBase64: string, mimeType = 'image
 }
 
 // Native (iOS/Android) version — uses { uri, name, type } instead of Blob
-export async function transcribeAudioNative(uri: string): Promise<string> {
+export async function transcribeAudioNative(uri: string, ext = 'm4a'): Promise<string> {
   if (!API_KEY) throw new Error('Groq API key is not configured. Add EXPO_PUBLIC_GROQ_API_KEY to your .env file.');
 
   const formData = new FormData();
-  formData.append('file', { uri, name: 'recording.m4a', type: 'audio/m4a' } as any);
+  formData.append('file', { uri, name: `recording.${ext}`, type: `audio/${ext}` } as any);
   formData.append('model', 'whisper-large-v3-turbo');
   formData.append('language', 'en');
 
@@ -250,5 +250,65 @@ export async function transcribeAudioFile(
     const text = await transcribeAudio(wav);
     if (text) results.push(text);
   }
+  return results.join(' ');
+}
+
+// ── Native large-file chunking (iOS / Android) ────────────────────────────────
+// expo-file-system lets us read arbitrary byte ranges from a file.
+// We write each 20 MB slice as a temp file and transcribe it independently.
+// MP3 / AAC streams tolerate byte-boundary cuts gracefully in Whisper.
+
+const NATIVE_CHUNK_BYTES = 20 * 1024 * 1024; // 20 MB per chunk
+
+/**
+ * Native: transcribe any audio file regardless of size.
+ * Files ≤ 20 MB are sent directly; larger files are sliced into 20 MB chunks,
+ * each written to the device cache, transcribed, then deleted.
+ */
+export async function transcribeAudioFileNative(
+  uri: string,
+  fileSize: number,
+  onProgress: (msg: string) => void,
+): Promise<string> {
+  if (!API_KEY) throw new Error('Groq API key is not configured. Add EXPO_PUBLIC_GROQ_API_KEY to your .env file.');
+
+  // Derive extension so Groq knows the codec (mp3, m4a, wav, etc.)
+  const ext = uri.split('.').pop()?.split('?')[0]?.toLowerCase() ?? 'm4a';
+
+  if (fileSize <= NATIVE_CHUNK_BYTES) {
+    onProgress('Transcribing audio…');
+    return transcribeAudioNative(uri, ext);
+  }
+
+  const FileSystem = require('expo-file-system');
+  const totalChunks = Math.ceil(fileSize / NATIVE_CHUNK_BYTES);
+  const results: string[] = [];
+
+  for (let i = 0; i < totalChunks; i++) {
+    const position = i * NATIVE_CHUNK_BYTES;
+    const length = Math.min(NATIVE_CHUNK_BYTES, fileSize - position);
+    onProgress(`Transcribing part ${i + 1} of ${totalChunks}…`);
+
+    // Read this byte range as base64
+    const chunkB64: string = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+      position,
+      length,
+    });
+
+    // Write to a temp file so we can POST it via FormData
+    const tmpUri = `${FileSystem.cacheDirectory}note_audio_${Date.now()}_${i}.${ext}`;
+    await FileSystem.writeAsStringAsync(tmpUri, chunkB64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+
+    try {
+      const text = await transcribeAudioNative(tmpUri, ext);
+      if (text) results.push(text);
+    } finally {
+      FileSystem.deleteAsync(tmpUri, { idempotent: true }).catch(() => {});
+    }
+  }
+
   return results.join(' ');
 }

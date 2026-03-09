@@ -22,6 +22,7 @@
     "expo": "~55.0.5",
     "expo-av": "^16.0.8",
     "expo-document-picker": "^12.0.0",
+    "expo-file-system": "~18.0.0",
     "expo-font": "~55.0.4",
     "expo-image-picker": "^55.0.11",
     "expo-location": "~55.1.2",
@@ -66,7 +67,8 @@
       "^../services/authService$": "<rootDir>/__mocks__/authService.js",
       "^../services/firebase$": "<rootDir>/__mocks__/firebaseService.js",
       "^@react-native-async-storage/async-storage$": "<rootDir>/__mocks__/@react-native-async-storage/async-storage.js",
-      "^expo-document-picker$": "<rootDir>/__mocks__/expo-document-picker.js"
+      "^expo-document-picker$": "<rootDir>/__mocks__/expo-document-picker.js",
+      "^expo-file-system$": "<rootDir>/__mocks__/expo-file-system.js"
     },
     "collectCoverageFrom": [
       "app/**/*.{ts,tsx}",
