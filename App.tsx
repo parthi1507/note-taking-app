@@ -15,6 +15,7 @@ import LoginScreen from './app/screens/LoginScreen';
 import RegisterScreen from './app/screens/RegisterScreen';
 import HomeScreen from './app/screens/HomeScreen';
 import NoteEditorScreen from './app/screens/NoteEditorScreen';
+import AIChatScreen from './app/screens/AIChatScreen';
 import { Note, NOTE_COLORS } from './app/types/note';
 import { NoteTemplate } from './app/data/templates';
 
@@ -31,6 +32,11 @@ export default function App() {
   const [initialContent, setInitialContent] = useState('');
   const [editorVisible, setEditorVisible] = useState(false);
   const [activeNoteColor, setActiveNoteColor] = useState<string>(NOTE_COLORS[0]);
+
+  const [chatVisible, setChatVisible] = useState(false);
+  const [chatNotes, setChatNotes] = useState<Note[]>([]);
+  const [chatContext, setChatContext] = useState('Personal Notes');
+  const chatAnim = useRef(new Animated.Value(0)).current;
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const modalAnim = useRef(new Animated.Value(0)).current;
@@ -88,6 +94,27 @@ export default function App() {
     }).start(() => setEditorVisible(false));
   };
 
+  const openChat = (notes: Note[], context: string) => {
+    setChatNotes(notes);
+    setChatContext(context);
+    chatAnim.setValue(0);
+    setChatVisible(true);
+    setTimeout(() => {
+      Animated.spring(chatAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 58,
+        friction: 12,
+      }).start();
+    }, 10);
+  };
+
+  const closeChat = () => {
+    Animated.timing(chatAnim, {
+      toValue: 0, duration: 220, useNativeDriver: true,
+    }).start(() => setChatVisible(false));
+  };
+
   const handleNewNote = (template?: NoteTemplate) => {
     setEditingNote(undefined);
     setInitialTitle(template?.getTitle() ?? '');
@@ -130,6 +157,7 @@ export default function App() {
             onNewNote={handleNewNote}
             onEditNote={handleEditNote}
             onLogout={handleLogout}
+            onOpenChat={openChat}
           />
         ) : screen === 'login' ? (
           <LoginScreen
@@ -195,6 +223,51 @@ export default function App() {
                 isModal
                 onColorChange={setActiveNoteColor}
               />
+            </Animated.View>
+          </View>
+        </>
+      )}
+
+      {/* AI Chat modal overlay */}
+      {chatVisible && (
+        <>
+          <TouchableOpacity
+            style={[StyleSheet.absoluteFill, styles.backdropTouch]}
+            activeOpacity={1}
+            onPress={closeChat}
+          >
+            <Animated.View
+              style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.72)', opacity: chatAnim }]}
+            />
+          </TouchableOpacity>
+
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              styles.cardContainer,
+              { justifyContent: isMobile ? 'flex-end' : 'center', alignItems: 'center' },
+            ]}
+            pointerEvents="box-none"
+          >
+            <Animated.View
+              style={[
+                styles.card,
+                isMobile ? styles.cardMobile : styles.cardDesktop,
+                {
+                  width: isMobile ? width : Math.min(560, width - 80),
+                  height: isMobile ? height * 0.88 : height * 0.82,
+                  borderColor: 'rgba(108,71,255,0.4)',
+                  shadowColor: '#6c47ff',
+                  transform: isMobile
+                    ? [{ translateY: chatAnim.interpolate({ inputRange: [0, 1], outputRange: [height * 0.88, 0] }) }]
+                    : [{ scale: chatAnim.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1] }) }],
+                  opacity: isMobile ? 1 : chatAnim,
+                },
+              ]}
+            >
+              <View style={[styles.accentLine, { backgroundColor: '#6c47ff' }]} />
+              {isMobile && <View style={styles.dragHandle} />}
+              <AIChatScreen notes={chatNotes} context={chatContext} onClose={closeChat} />
             </Animated.View>
           </View>
         </>

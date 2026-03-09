@@ -13,6 +13,7 @@ A modern, cross-platform note-taking application built with React Native and Exp
 
 - **Notes CRUD** — Create, edit, and delete notes with real-time Firestore sync
 - **Rich Text Editor** — WYSIWYG editor on web; formatting toolbar (Bold, Italic, Underline, Strikethrough, H1, H2) available on both web and mobile
+- **AI Chat with Notes** — Ask questions about your notes in a chat interface; AI answers using only your notes and shows which notes it used as sources (works in both Personal and Team workspace context)
 - **AI-Powered Tools** — Auto-generate title, tags, and summary using Groq AI (`llama-3.1-8b-instant`)
 - **Voice to Text** — Record audio and transcribe it into note content using Groq Whisper API
 - **Audio File Upload** — Upload audio files up to any size; files over 24 MB are auto-chunked and transcribed in parts
@@ -150,6 +151,7 @@ note-taking-app/
 │   ├── data/
 │   │   └── templates.ts        # Note template definitions
 │   ├── screens/                # Screen-level components
+│   │   ├── AIChatScreen.tsx    # AI chat interface — ask questions about your notes
 │   │   ├── HomeScreen.tsx
 │   │   ├── LoginScreen.tsx
 │   │   ├── NoteEditorScreen.tsx
