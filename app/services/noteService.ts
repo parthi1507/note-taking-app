@@ -55,6 +55,26 @@ export function subscribeToNotes(
   );
 
   return onSnapshot(q, (snapshot) => {
+    const notes: Note[] = snapshot.docs
+      .map((d) => ({ id: d.id, ...(d.data() as Omit<Note, 'id'>) }))
+      .filter((n) => !n.workspaceId);
+    callback(notes);
+  });
+}
+
+// Requires a composite Firestore index: workspaceId ASC, isPinned DESC, updatedAt DESC
+export function subscribeToWorkspaceNotes(
+  workspaceId: string,
+  callback: (notes: Note[]) => void
+): Unsubscribe {
+  const q = query(
+    collection(db, COLLECTION),
+    where('workspaceId', '==', workspaceId),
+    orderBy('isPinned', 'desc'),
+    orderBy('updatedAt', 'desc')
+  );
+
+  return onSnapshot(q, (snapshot) => {
     const notes: Note[] = snapshot.docs.map((d) => ({
       id: d.id,
       ...(d.data() as Omit<Note, 'id'>),

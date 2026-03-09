@@ -15,6 +15,9 @@ A modern, cross-platform note-taking application built with React Native and Exp
 - **Rich Text Editor** — WYSIWYG editor on web; formatting toolbar (Bold, Italic, Underline, Strikethrough, H1, H2) available on both web and mobile
 - **AI-Powered Tools** — Auto-generate title, tags, and summary using Groq AI (`llama-3.1-8b-instant`)
 - **Voice to Text** — Record audio and transcribe it into note content using Groq Whisper API
+- **Audio File Upload** — Upload audio files up to any size; files over 24 MB are auto-chunked and transcribed in parts
+- **Business Card Scan** — Photograph or upload a business card; contact details are extracted via Groq Vision AI and inserted into the note
+- **Team Workspaces** — Create shared workspaces where team members can view and edit notes together; workspace creator generates a time-limited invite code (valid 2m 30s) that others use to join
 - **Note Templates** — One-tap starters: Meeting Notes, To-Do List, Journal, Lecture Notes
 - **Inline Location** — Insert location chips at cursor position via GPS or search (powered by Nominatim / OpenStreetMap)
 - **URL Auto-Linkify** — URLs typed in notes are automatically converted to clickable links
@@ -37,6 +40,7 @@ A modern, cross-platform note-taking application built with React Native and Exp
 | Backend | Firebase Firestore + Firebase Auth |
 | AI (Text) | Groq API — `llama-3.1-8b-instant` |
 | AI (Voice) | Groq Whisper API — `whisper-large-v3-turbo` |
+| AI (Vision) | Groq Vision API — `meta-llama/llama-4-scout-17b-16e-instruct` (business card scan) |
 | Location | Nominatim / OpenStreetMap (free, no API key) |
 | Auth Persistence | AsyncStorage (`@react-native-async-storage/async-storage`) |
 | State Management | Zustand |
@@ -153,16 +157,19 @@ note-taking-app/
 │   ├── services/               # Firebase and API services
 │   │   ├── authService.ts
 │   │   ├── firebase.ts
-│   │   ├── groqService.ts      # Groq AI (text + Whisper voice transcription)
+│   │   ├── groqService.ts      # Groq AI (text + Whisper voice + Vision business card)
 │   │   ├── locationService.ts  # GPS + Nominatim reverse geocoding & search
-│   │   └── noteService.ts
+│   │   ├── noteService.ts
+│   │   └── workspaceService.ts # Team workspace CRUD + timed invite code generation
 │   ├── hooks/                  # Custom React hooks
 │   │   ├── useResponsive.ts    # Breakpoint-aware layout values
 │   │   └── useVoiceInput.ts
-│   ├── store/                  # Zustand state store
-│   │   └── noteStore.ts
+│   ├── store/                  # Zustand state stores
+│   │   ├── noteStore.ts
+│   │   └── workspaceStore.ts   # Active workspace, workspace notes, search state
 │   ├── types/                  # TypeScript type definitions
-│   │   └── note.ts
+│   │   ├── note.ts
+│   │   └── workspace.ts        # Workspace interface with timed invite code fields
 │   ├── utils/                  # Shared utilities
 │   │   └── validation.ts
 │   └── screens/__tests__/      # Jest unit tests

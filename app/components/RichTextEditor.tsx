@@ -162,11 +162,17 @@ export default function RichTextEditor({
       insertTextRef.current = (text: string) => {
         if (!editorRef.current) return;
         editorRef.current.focus();
+        // Escape HTML entities then convert \n → <br> so line breaks render correctly
+        // in the contentEditable div (plain \n characters are invisible in HTML).
+        const escaped = text
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/\n/g, '<br>');
         try {
-          document.execCommand('insertText', false, '\n' + text);
+          document.execCommand('insertHTML', false, '<br>' + escaped);
         } catch {
-          // Fallback: append text directly via innerHTML when execCommand is unavailable
-          editorRef.current.innerHTML = editorRef.current.innerHTML + '\n' + text;
+          editorRef.current.innerHTML = editorRef.current.innerHTML + '<br>' + escaped;
         }
         onChange(editorRef.current.innerHTML);
         setIsEmpty(false);

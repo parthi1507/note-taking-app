@@ -14,6 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../services/firebase';
 import { createNote, updateNote, deleteNote } from '../services/noteService';
+import { useWorkspaceStore } from '../store/workspaceStore';
 import { generateSummary, generateTitle, generateTags, transcribeAudio, transcribeAudioNative, transcribeAudioFile, transcribeAudioFileNative, extractBusinessCard } from '../services/groqService';
 import { Note, NOTE_COLORS } from '../types/note';
 import RichTextEditor from '../components/RichTextEditor';
@@ -72,6 +73,7 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
   const [uploadProgress, setUploadProgress] = useState('');
   const nativeRecordingRef = useRef<any>(null);
   const isEditing = !!note;
+  const activeWorkspace = useWorkspaceStore((s) => s.activeWorkspace);
 
   const handleEditorSelectionChange = ({ formats, block }: { formats: Record<string, boolean>; block: string | null }) => {
     setEditorFormats(formats);
@@ -200,11 +202,22 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
     }
     setSaving(true);
     try {
-      const userId = auth.currentUser!.uid;
+      const user = auth.currentUser!;
+      const editorName = user.displayName ?? user.email ?? 'Unknown';
       if (isEditing) {
-        await updateNote(note.id, { title, content, tags, color });
+        const updateData: Parameters<typeof updateNote>[1] = { title, content, tags, color };
+        if (note.workspaceId) updateData.lastEditedBy = editorName;
+        await updateNote(note.id, updateData);
       } else {
-        await createNote(userId, { title, content, tags, color, isPinned: false });
+        const wsId = activeWorkspace?.id;
+        await createNote(user.uid, {
+          title,
+          content,
+          tags,
+          color,
+          isPinned: false,
+          ...(wsId ? { workspaceId: wsId, lastEditedBy: editorName } : {}),
+        });
       }
       onBack();
     } catch {
@@ -569,7 +582,15 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
           <Ionicons name={isModal ? 'close' : 'arrow-back'} size={22} color="#fff" />
         </TouchableOpacity>
 
-        <Text style={styles.topTitle}>{isEditing ? 'Edit Note' : 'New Note'}</Text>
+        <View style={styles.topTitleRow}>
+          <Text style={styles.topTitle}>{isEditing ? 'Edit Note' : 'New Note'}</Text>
+          {(note?.workspaceId || (!isEditing && activeWorkspace)) && (
+            <View style={styles.teamBadge}>
+              <Ionicons name="people-outline" size={12} color="#a78bfa" />
+              <Text style={styles.teamBadgeText}>Team</Text>
+            </View>
+          )}
+        </View>
 
         <View style={styles.topActions}>
           {isEditing && (
@@ -586,6 +607,13 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
           </TouchableOpacity>
         </View>
       </View>
+
+      {note?.workspaceId && note?.lastEditedBy ? (
+        <View style={styles.lastEditedBar}>
+          <Ionicons name="pencil-outline" size={12} color="#555" />
+          <Text style={styles.lastEditedText}>Last edited by {note.lastEditedBy}</Text>
+        </View>
+      ) : null}
 
       <ScrollView
         style={styles.scroll}
@@ -926,7 +954,22 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)',
   },
   iconBtn: { padding: 6 },
+  topTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   topTitle: { color: '#fff', fontSize: 17, fontWeight: '600' },
+  teamBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(108,71,255,0.2)',
+    borderWidth: 1, borderColor: 'rgba(108,71,255,0.4)',
+    borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2,
+  },
+  teamBadgeText: { color: '#a78bfa', fontSize: 11, fontWeight: '600' },
+  lastEditedBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 20, paddingVertical: 7,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.04)',
+  },
+  lastEditedText: { color: '#555', fontSize: 12 },
   topActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   saveBtn: {
     backgroundColor: '#6c47ff', borderRadius: 10,
