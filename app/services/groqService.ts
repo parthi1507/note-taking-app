@@ -342,6 +342,44 @@ export async function transcribeAudioFileNative(
   return results.join(' ');
 }
 
+// ── Weekly Status Report ──────────────────────────────────────────────────────
+
+export async function generateWeeklyReport(notes: Note[]): Promise<string> {
+  if (!notes.length) throw new Error('No notes found for this week.');
+
+  const notesContext = notes
+    .map((n) => {
+      const title = n.title || 'Untitled';
+      const content = stripHtml(n.content).slice(0, 400);
+      const date = new Date(n.updatedAt).toLocaleDateString();
+      return `[${date}] ${title}\n${content}`;
+    })
+    .join('\n\n');
+
+  const today = new Date();
+  const weekStart = new Date(today);
+  weekStart.setDate(today.getDate() - 6);
+  const dateRange = `${weekStart.toLocaleDateString()} - ${today.toLocaleDateString()}`;
+
+  return ask(
+    `You are a PM assistant. Generate a professional weekly status report based on the notes below.\n` +
+    `Format the report EXACTLY like this:\n\n` +
+    `📊 Weekly Status Report\n` +
+    `Week of ${dateRange}\n\n` +
+    `✅ COMPLETED\n` +
+    `- [list completed tasks/items]\n\n` +
+    `🔄 IN PROGRESS\n` +
+    `- [list ongoing work]\n\n` +
+    `❌ BLOCKERS\n` +
+    `- [list blockers or "None identified"]\n\n` +
+    `📅 NEXT WEEK\n` +
+    `- [list planned next steps]\n\n` +
+    `Keep it concise and professional. Use only information from the notes.\n\n` +
+    `NOTES:\n${notesContext}`,
+    800,
+  );
+}
+
 // ── AI Chat with Notes ────────────────────────────────────────────────────────
 
 const stripHtml = (html: string) =>

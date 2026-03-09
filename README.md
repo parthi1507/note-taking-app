@@ -1,6 +1,6 @@
 # NoteApp
 
-![CI](https://github.com/parthiban-countai/note-taking-app/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/parthi1507/note-taking-app/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20Web-lightgrey)
 ![Expo](https://img.shields.io/badge/expo-55-black)
@@ -62,7 +62,7 @@ A modern, cross-platform note-taking application built with React Native and Exp
 ### Installation
 
 ```bash
-git clone https://github.com/parthiban-countai/note-taking-app.git
+git clone https://github.com/parthi1507/note-taking-app.git
 cd note-taking-app
 npm install --legacy-peer-deps
 ```
