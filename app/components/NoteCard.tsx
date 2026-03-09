@@ -113,11 +113,22 @@ export default function NoteCard({ note, onPress, onPin, onDelete, index = 0 }: 
 
             {/* Footer */}
             <View style={styles.footer}>
-              <Text style={styles.date}>{formatDate(note.updatedAt)}</Text>
+              <View style={styles.footerLeft}>
+                {note.workspaceId && (
+                  <View style={styles.teamBadge}>
+                    <Ionicons name="people-outline" size={11} color="#a78bfa" />
+                    <Text style={styles.teamBadgeText}>Team</Text>
+                  </View>
+                )}
+                <Text style={styles.date}>{formatDate(note.updatedAt)}</Text>
+              </View>
               <TouchableOpacity onPress={(e) => { e?.stopPropagation?.(); onDelete(); }} style={styles.iconBtn}>
                 <Ionicons name="trash-outline" size={14} color="#444" />
               </TouchableOpacity>
             </View>
+            {note.workspaceId && note.lastEditedBy ? (
+              <Text style={styles.editedBy}>Edited by {note.lastEditedBy}</Text>
+            ) : null}
           </View>
         </View>
       </TouchableOpacity>
@@ -193,10 +204,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 2,
   },
+  footerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  teamBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(108,71,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(108,71,255,0.3)',
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  teamBadgeText: {
+    color: '#a78bfa',
+    fontSize: 11,
+    fontWeight: '600',
+  },
   date: {
     color: '#444',
     fontSize: 13,
     fontWeight: '500',
+  },
+  editedBy: {
+    color: '#3a3a5c',
+    fontSize: 11,
+    marginTop: 2,
   },
   iconBtn: {
     padding: 4,
