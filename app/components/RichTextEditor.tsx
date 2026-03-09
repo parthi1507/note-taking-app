@@ -12,6 +12,21 @@ interface Props {
   placeholder?: string;
   insertTextRef?: React.MutableRefObject<((text: string) => void) | null>;
   onSelectionChange?: (state: SelectionState) => void;
+  applyFormatRef?: React.MutableRefObject<((format: string) => void) | null>;
+}
+
+function stripHtmlForMobile(html: string): string {
+  if (!html.includes('<')) return html;
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/?(div|p|h1|h2|h3)[^>]*>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 const INLINE_COMMANDS = ['bold', 'italic', 'underline', 'strikeThrough'];
@@ -89,13 +104,51 @@ export default function RichTextEditor({
   placeholder = 'Start writing...',
   insertTextRef,
   onSelectionChange,
+  applyFormatRef,
 }: Props) {
   const editorRef = useRef<any>(null);
   const [isEmpty, setIsEmpty] = useState(!value);
   const initialized = useRef(false);
+  const mobileSelectionRef = useRef({ start: 0, end: 0 });
+  const mobileValueRef = useRef(value.includes('<') ? stripHtmlForMobile(value) : value);
 
   useEffect(() => {
-    if (Platform.OS !== 'web') return;
+    if (Platform.OS !== 'web') {
+      // Keep mobileValueRef in sync with incoming value changes (e.g. voice transcription)
+      const plain = value.includes('<') ? stripHtmlForMobile(value) : value;
+      mobileValueRef.current = plain;
+
+      if (applyFormatRef) {
+        applyFormatRef.current = (format: string) => {
+          const cur = mobileValueRef.current;
+          const { start, end } = mobileSelectionRef.current;
+          const selected = cur.slice(start, end);
+          let next = cur;
+          if (format === 'bold') {
+            next = cur.slice(0, start) + '**' + selected + '**' + cur.slice(end);
+          } else if (format === 'italic') {
+            next = cur.slice(0, start) + '_' + selected + '_' + cur.slice(end);
+          } else if (format === 'underline') {
+            next = cur.slice(0, start) + '__' + selected + '__' + cur.slice(end);
+          } else if (format === 'strikeThrough') {
+            next = cur.slice(0, start) + '~~' + selected + '~~' + cur.slice(end);
+          } else if (format === 'h1') {
+            const lineStart = cur.lastIndexOf('\n', start - 1) + 1;
+            next = cur.slice(lineStart, lineStart + 2) === '# '
+              ? cur.slice(0, lineStart) + cur.slice(lineStart + 2)
+              : cur.slice(0, lineStart) + '# ' + cur.slice(lineStart);
+          } else if (format === 'h2') {
+            const lineStart = cur.lastIndexOf('\n', start - 1) + 1;
+            next = cur.slice(lineStart, lineStart + 3) === '## '
+              ? cur.slice(0, lineStart) + cur.slice(lineStart + 3)
+              : cur.slice(0, lineStart) + '## ' + cur.slice(lineStart);
+          }
+          mobileValueRef.current = next;
+          onChange(next);
+        };
+      }
+      return;
+    }
 
     injectEditorStyles();
 
@@ -119,17 +172,24 @@ export default function RichTextEditor({
         setIsEmpty(false);
       };
     }
-  }, []);
+  }, [value]);
 
-  // Native fallback — plain TextInput
+  // Native fallback — plain TextInput with HTML stripped
   if (Platform.OS !== 'web') {
+    const displayValue = value.includes('<') ? stripHtmlForMobile(value) : value;
     return (
       <TextInput
         style={styles.nativeInput}
         placeholder={placeholder}
         placeholderTextColor="#444"
-        value={value}
-        onChangeText={onChange}
+        value={displayValue}
+        onChangeText={(text) => {
+          mobileValueRef.current = text;
+          onChange(text);
+        }}
+        onSelectionChange={(e) => {
+          mobileSelectionRef.current = e.nativeEvent.selection;
+        }}
         multiline
         textAlignVertical="top"
       />

@@ -1,6 +1,8 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { initializeAuth, getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -13,5 +15,21 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-export const auth = getAuth(app);
+// On native, persist auth state across app restarts using AsyncStorage.
+// getReactNativePersistence is in the Metro/RN-specific firebase bundle so it needs a runtime require.
+// On web, fall back to the default (localStorage-based) persistence.
+function buildAuth() {
+  if (Platform.OS !== 'web') {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { getReactNativePersistence } = require('@firebase/auth') as any;
+      if (getReactNativePersistence) {
+        return initializeAuth(app, { persistence: getReactNativePersistence(AsyncStorage) });
+      }
+    } catch { /* fall through */ }
+  }
+  return getAuth(app);
+}
+
+export const auth = buildAuth();
 export const db = getFirestore(app);

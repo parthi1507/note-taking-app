@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   useWindowDimensions,
 } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './app/services/firebase';
 import { logoutUser } from './app/services/authService';
@@ -29,7 +30,7 @@ export default function App() {
   const [initialTitle, setInitialTitle] = useState('');
   const [initialContent, setInitialContent] = useState('');
   const [editorVisible, setEditorVisible] = useState(false);
-  const [activeNoteColor, setActiveNoteColor] = useState(NOTE_COLORS[0]);
+  const [activeNoteColor, setActiveNoteColor] = useState<string>(NOTE_COLORS[0]);
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const modalAnim = useRef(new Animated.Value(0)).current;
@@ -120,6 +121,7 @@ export default function App() {
   });
 
   return (
+    <SafeAreaProvider>
     <View style={{ flex: 1 }}>
       {/* Main screens */}
       <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
@@ -200,6 +202,7 @@ export default function App() {
 
       <StatusBar style="light" />
     </View>
+    </SafeAreaProvider>
   );
 }
 

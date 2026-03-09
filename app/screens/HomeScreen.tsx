@@ -9,6 +9,7 @@ import {
   Alert,
   Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../services/firebase';
 import { subscribeToNotes, deleteNote, updateNote } from '../services/noteService';
@@ -33,6 +34,7 @@ export default function HomeScreen({ onNewNote, onEditNote, onLogout }: Props) {
   const [loading, setLoading] = useState(true);
   const [showTemplates, setShowTemplates] = useState(false);
   const { isMobile, isTablet, numColumns, noteCardWidth, width } = useResponsive();
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -65,17 +67,11 @@ export default function HomeScreen({ onNewNote, onEditNote, onLogout }: Props) {
 
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + 12 }]}>
       {/* Background orbs */}
       <View style={styles.orb1} />
       <View style={styles.orb2} />
       <View style={styles.orb3} />
-
-      {/* Background watermark */}
-      <View style={styles.watermarkWrap} pointerEvents="none">
-        <Text style={styles.watermarkSymbol}>✦</Text>
-        <Text style={styles.watermarkText}>MY NOTES</Text>
-      </View>
 
       {/* Decorative corner lines */}
       <View style={styles.cornerTL} pointerEvents="none" />
@@ -205,6 +201,12 @@ export default function HomeScreen({ onNewNote, onEditNote, onLogout }: Props) {
         <Ionicons name="add" size={30} color="#fff" />
       </TouchableOpacity>
 
+      {/* Background watermark — rendered last so it appears above content on mobile */}
+      <View style={styles.watermarkWrap} pointerEvents="none">
+        <Text style={styles.watermarkSymbol}>✦</Text>
+        <Text style={styles.watermarkText}>MY NOTES</Text>
+      </View>
+
       {/* Template Picker */}
       <TemplatePickerModal
         visible={showTemplates}
@@ -222,7 +224,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0a0a14',
-    paddingTop: 56,
     overflow: 'hidden',
     backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px)',
     backgroundSize: '28px 28px',
