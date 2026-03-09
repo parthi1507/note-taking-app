@@ -12,7 +12,7 @@ A modern, cross-platform note-taking application built with React Native and Exp
 ## Features
 
 - **Notes CRUD** — Create, edit, and delete notes with real-time Firestore sync
-- **Rich Text Editor** — WYSIWYG editor with Bold, Italic, Underline, Strikethrough, H1, and H2 formatting
+- **Rich Text Editor** — WYSIWYG editor on web; formatting toolbar (Bold, Italic, Underline, Strikethrough, H1, H2) available on both web and mobile
 - **AI-Powered Tools** — Auto-generate title, tags, and summary using Groq AI (`llama-3.1-8b-instant`)
 - **Voice to Text** — Record audio and transcribe it into note content using Groq Whisper API
 - **Note Templates** — One-tap starters: Meeting Notes, To-Do List, Journal, Lecture Notes
@@ -23,7 +23,7 @@ A modern, cross-platform note-taking application built with React Native and Exp
 - **Pin Notes** — Pinned notes always appear at the top
 - **Search** — Real-time search across title, content, and tags
 - **Modal Card Editor** — Notes open as a responsive modal (slide-up sheet on mobile, centered card on desktop)
-- **User Auth** — Email/password sign-up and login via Firebase Auth
+- **User Auth** — Email/password sign-up and login via Firebase Auth with persistent session (stays logged in across app restarts)
 - **Responsive UI** — Optimized for mobile, tablet, and desktop screen sizes
 - **Dark Theme** — Dark glassmorphism design throughout
 
@@ -38,6 +38,7 @@ A modern, cross-platform note-taking application built with React Native and Exp
 | AI (Text) | Groq API — `llama-3.1-8b-instant` |
 | AI (Voice) | Groq Whisper API — `whisper-large-v3-turbo` |
 | Location | Nominatim / OpenStreetMap (free, no API key) |
+| Auth Persistence | AsyncStorage (`@react-native-async-storage/async-storage`) |
 | State Management | Zustand |
 | Navigation | Prop-drilled screen state machine (no React Navigation router) |
 | Build | EAS Build (Expo Application Services) |
@@ -137,8 +138,10 @@ note-taking-app/
 ├── app/
 │   ├── components/             # Reusable UI components
 │   │   ├── EmptyState.tsx
+│   │   ├── MarkdownPreview.tsx
 │   │   ├── NoteCard.tsx
-│   │   ├── RichTextEditor.tsx  # WYSIWYG contentEditable editor (web)
+│   │   ├── RichTextEditor.tsx  # WYSIWYG editor (web) + formatting toolbar (mobile)
+│   │   ├── SkeletonCard.tsx
 │   │   └── TemplatePickerModal.tsx
 │   ├── data/
 │   │   └── templates.ts        # Note template definitions
@@ -153,12 +156,17 @@ note-taking-app/
 │   │   ├── groqService.ts      # Groq AI (text + Whisper voice transcription)
 │   │   ├── locationService.ts  # GPS + Nominatim reverse geocoding & search
 │   │   └── noteService.ts
+│   ├── hooks/                  # Custom React hooks
+│   │   ├── useResponsive.ts    # Breakpoint-aware layout values
+│   │   └── useVoiceInput.ts
 │   ├── store/                  # Zustand state store
 │   │   └── noteStore.ts
 │   ├── types/                  # TypeScript type definitions
 │   │   └── note.ts
+│   ├── utils/                  # Shared utilities
+│   │   └── validation.ts
 │   └── screens/__tests__/      # Jest unit tests
-├── __mocks__/                  # Jest mocks for Firebase and icons
+├── __mocks__/                  # Jest mocks for Firebase, icons, and AsyncStorage
 ├── .github/
 │   └── workflows/
 │       └── ci.yml              # GitHub Actions CI pipeline

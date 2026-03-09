@@ -14,7 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../services/firebase';
 import { createNote, updateNote, deleteNote } from '../services/noteService';
-import { generateSummary, generateTitle, generateTags, transcribeAudio } from '../services/groqService';
+import { generateSummary, generateTitle, generateTags, transcribeAudio, transcribeAudioNative } from '../services/groqService';
 import { Note, NOTE_COLORS } from '../types/note';
 import RichTextEditor from '../components/RichTextEditor';
 import { getCurrentLocation, getNearbyPlaces, searchLocations, LocationResult } from '../services/locationService';
@@ -66,6 +66,7 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const insertTextRef = useRef<((text: string) => void) | null>(null);
+  const applyFormatRef = useRef<((format: string) => void) | null>(null);
   const nativeRecordingRef = useRef<any>(null);
   const isEditing = !!note;
 
@@ -118,8 +119,31 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
     setGpsLoading(true);
     try {
       const loc = await getCurrentLocation();
-      setLocation(loc);
       closePicker();
+      if (Platform.OS === 'web') {
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        if (savedSelectionRef.current) sel?.addRange(savedSelectionRef.current);
+        const safe = loc.address.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        try {
+          document.execCommand(
+            'insertHTML', false,
+            `<span contenteditable="false" style="display:inline-flex;align-items:center;gap:4px;color:#c4b5fd;background:rgba(108,71,255,0.18);border:1px solid rgba(108,71,255,0.4);padding:2px 10px 2px 6px;border-radius:14px;font-size:14px;white-space:nowrap;user-select:none;">📍 ${safe}</span>&#8203;`
+          );
+        } catch {
+          const s = window.getSelection();
+          if (s && s.rangeCount > 0) {
+            const range = s.getRangeAt(0);
+            range.deleteContents();
+            range.insertNode(document.createTextNode(`📍 ${loc.address}`));
+          }
+        }
+      } else {
+        setContent((prev) => {
+          const plain = prev.includes('<') ? stripHtml(prev) : prev;
+          return plain ? `${plain}\n📍 ${loc.address}` : `📍 ${loc.address}`;
+        });
+      }
     } catch (err: any) {
       Alert.alert('Location Error', err.message ?? 'Could not get location. Please allow access.');
     } finally {
@@ -150,6 +174,12 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
           range.insertNode(document.createTextNode(`📍 ${result.address}`));
         }
       }
+    } else {
+      // Mobile: append location as plain text
+      setContent((prev) => {
+        const plain = prev.includes('<') ? stripHtml(prev) : prev;
+        return plain ? `${plain}\n📍 ${result.address}` : `📍 ${result.address}`;
+      });
     }
   };
 
@@ -182,8 +212,12 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
   };
 
   const handleDelete = async () => {
-    await deleteNote(note!.id);
-    onBack();
+    try {
+      await deleteNote(note!.id);
+      onBack();
+    } catch {
+      Alert.alert('Error', 'Failed to delete note. Please try again.');
+    }
   };
 
   const handleAiSummary = async () => {
@@ -255,9 +289,7 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
           if (uri) {
             setAiLoading('transcribe');
             try {
-              const fileResponse = await fetch(uri);
-              const audioBlob = await fileResponse.blob();
-              const transcript = await transcribeAudio(audioBlob);
+              const transcript = await transcribeAudioNative(uri);
               if (transcript) {
                 setContent((prev) => (prev ? `${prev}\n${transcript}` : transcript));
               }
@@ -332,7 +364,7 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
   return (
     <KeyboardAvoidingView
       style={[styles.container, isModal && styles.containerModal]}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       {/* Top Bar */}
       <View style={[styles.topBar, isModal && styles.topBarModal]}>
@@ -443,7 +475,7 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
             )}
           </TouchableOpacity>
 
-          {/* Formatting toolbar — web only */}
+          {/* Formatting toolbar — web */}
           {Platform.OS === 'web' && (() => {
             const btn = (label: string, isActive: boolean, onMouseDown: (e: any) => void, extra: object = {}) =>
               React.createElement('button', {
@@ -470,32 +502,53 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
             return React.createElement(
               'div',
               { style: { display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' } },
-
-              // Inline formats
               btn('B', !!editorFormats['bold'], (e) => { e.preventDefault(); try { document.execCommand('bold', false, undefined); } catch {} }, { fontWeight: 'bold' }),
               btn('I', !!editorFormats['italic'], (e) => { e.preventDefault(); try { document.execCommand('italic', false, undefined); } catch {} }, { fontStyle: 'italic' }),
               btn('U', !!editorFormats['underline'], (e) => { e.preventDefault(); try { document.execCommand('underline', false, undefined); } catch {} }, { textDecoration: 'underline' }),
               btn('S', !!editorFormats['strikeThrough'], (e) => { e.preventDefault(); try { document.execCommand('strikeThrough', false, undefined); } catch {} }, { textDecoration: 'line-through' }),
-
               sep(),
-
-              // Block formats
               btn('H1', editorBlock === 'H1', (e) => { e.preventDefault(); try { document.execCommand('formatBlock', false, editorBlock === 'H1' ? 'P' : 'H1'); } catch {} setEditorBlock(editorBlock === 'H1' ? null : 'H1'); }, { fontWeight: 'bold', fontSize: '15px' }),
               btn('H2', editorBlock === 'H2', (e) => { e.preventDefault(); try { document.execCommand('formatBlock', false, editorBlock === 'H2' ? 'P' : 'H2'); } catch {} setEditorBlock(editorBlock === 'H2' ? null : 'H2'); }, { fontWeight: 'bold', fontSize: '13px' }),
-
               sep(),
-
-              // Location insert button
               btn('📍', showLocationPicker, (e) => {
                 e.preventDefault();
-                // Save cursor selection before picker steals focus
                 const sel = window.getSelection();
                 if (sel && sel.rangeCount > 0) savedSelectionRef.current = sel.getRangeAt(0).cloneRange();
                 openLocationPicker();
               }),
-
             );
           })()}
+
+          {/* Formatting toolbar — mobile */}
+          {Platform.OS !== 'web' && (
+            <View style={styles.mobileToolbar}>
+              {([
+                { label: 'B', format: 'bold', extra: { fontWeight: '700' as const } },
+                { label: 'I', format: 'italic', extra: { fontStyle: 'italic' as const } },
+                { label: 'U', format: 'underline', extra: { textDecorationLine: 'underline' as const } },
+                { label: 'S', format: 'strikeThrough', extra: { textDecorationLine: 'line-through' as const } },
+              ] as const).map(({ label, format, extra }) => (
+                <TouchableOpacity
+                  key={format}
+                  style={styles.mobileToolbarBtn}
+                  onPress={() => applyFormatRef.current?.(format)}
+                >
+                  <Text style={[styles.mobileToolbarBtnText, extra]}>{label}</Text>
+                </TouchableOpacity>
+              ))}
+              <View style={styles.mobileToolbarSep} />
+              <TouchableOpacity style={styles.mobileToolbarBtn} onPress={() => applyFormatRef.current?.('h1')}>
+                <Text style={[styles.mobileToolbarBtnText, { fontWeight: '700', fontSize: 15 }]}>H1</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.mobileToolbarBtn} onPress={() => applyFormatRef.current?.('h2')}>
+                <Text style={[styles.mobileToolbarBtnText, { fontWeight: '700', fontSize: 13 }]}>H2</Text>
+              </TouchableOpacity>
+              <View style={styles.mobileToolbarSep} />
+              <TouchableOpacity style={styles.mobileToolbarBtn} onPress={openLocationPicker}>
+                <Text style={styles.mobileToolbarBtnText}>📍</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {/* Location picker — appears inline when 📍 button is pressed */}
@@ -582,6 +635,7 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
           placeholder="Start writing..."
           insertTextRef={insertTextRef}
           onSelectionChange={handleEditorSelectionChange}
+          applyFormatRef={applyFormatRef}
         />
 
         {/* Tags */}
@@ -738,4 +792,17 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(239,68,68,0.5)',
   },
   voiceBtnText: { color: '#a78bfa', fontSize: 13, fontWeight: '600' },
+  mobileToolbar: {
+    flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap',
+  },
+  mobileToolbarBtn: {
+    backgroundColor: 'rgba(108,71,255,0.08)',
+    borderWidth: 1, borderColor: 'rgba(108,71,255,0.28)',
+    borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5,
+    minWidth: 30, alignItems: 'center',
+  },
+  mobileToolbarBtnText: { color: '#a78bfa', fontSize: 13 },
+  mobileToolbarSep: {
+    width: 1, height: 20, backgroundColor: 'rgba(108,71,255,0.25)', marginHorizontal: 2,
+  },
 });

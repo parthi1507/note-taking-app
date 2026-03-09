@@ -81,3 +81,28 @@ export async function transcribeAudio(audioBlob: Blob): Promise<string> {
   const data = await response.json();
   return data.text?.trim() ?? '';
 }
+
+// Native (iOS/Android) version — uses { uri, name, type } instead of Blob
+export async function transcribeAudioNative(uri: string): Promise<string> {
+  if (!API_KEY) throw new Error('Groq API key is not configured. Add EXPO_PUBLIC_GROQ_API_KEY to your .env file.');
+
+  const formData = new FormData();
+  formData.append('file', { uri, name: 'recording.m4a', type: 'audio/m4a' } as any);
+  formData.append('model', 'whisper-large-v3-turbo');
+  formData.append('language', 'en');
+
+  const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${API_KEY}` },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    if (response.status === 429) throw new Error('Rate limit reached. Please wait a moment.');
+    if (response.status === 401) throw new Error('API key not authorized.');
+    throw new Error(`Transcription error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return data.text?.trim() ?? '';
+}

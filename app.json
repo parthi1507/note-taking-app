@@ -12,7 +12,8 @@
       "backgroundColor": "#0a0a14"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.parthiban15.notetakingappparthiban15"
     },
     "android": {
       "adaptiveIcon": {
@@ -22,7 +23,8 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.parthiban15.notetakingappparthiban15"
+      "package": "com.parthiban15.notetakingappparthiban15",
+      "softwareKeyboardLayoutMode": "pan"
     },
     "web": {
       "favicon": "./assets/favicon.svg",
