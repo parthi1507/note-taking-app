@@ -57,6 +57,12 @@
       "expo-font",
       "expo-document-picker"
     ],
+    "runtimeVersion": {
+      "policy": "sdkVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/dd3ec6a8-284a-43e5-9b5f-1b1698521be5"
+    },
     "extra": {
       "eas": {
         "projectId": "dd3ec6a8-284a-43e5-9b5f-1b1698521be5"

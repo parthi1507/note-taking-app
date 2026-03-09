@@ -78,7 +78,7 @@ export default function HomeScreen({ onNewNote, onEditNote, onLogout, onOpenChat
   const [countdown, setCountdown] = useState(0);
   const [generatingCode, setGeneratingCode] = useState(false);
 
-  const { isMobile, isTablet, numColumns, noteCardWidth, width } = useResponsive();
+  const { isMobile, isTablet, noteCardWidth, width } = useResponsive();
   const insets = useSafeAreaInsets();
 
   // Subscribe to personal notes on mount
@@ -166,7 +166,7 @@ export default function HomeScreen({ onNewNote, onEditNote, onLogout, onOpenChat
     try {
       const report = await generateWeeklyReport(weekNotes);
       setReportText(report);
-    } catch (e: any) {
+    } catch {
       setReportText('Failed to generate report. Please try again.');
     } finally {
       setReportLoading(false);
