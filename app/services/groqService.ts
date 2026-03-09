@@ -58,13 +58,38 @@ export async function generateTags(content: string): Promise<string[]> {
     .slice(0, 5);
 }
 
+/**
+ * Shared post-processor: if Whisper detected Tamil (including Tamil+English
+ * code-switching), translate the transcript to English via Groq LLM.
+ * Tamil script Unicode (U+0B80–U+0BFF) in the text is also used as a
+ * fallback signal when the detected-language field is unavailable.
+ * For every other language the original text is returned unchanged.
+ */
+async function maybeTranslateToEnglish(text: string, detectedLanguage: string): Promise<string> {
+  const lang = detectedLanguage.toLowerCase();
+  const hasTamilScript = /[\u0B80-\u0BFF]/.test(text);
+  if (lang !== 'tamil' && lang !== 'ta' && !hasTamilScript) return text;
+
+  // Translate Tamil / Tanglish → English, keep existing English words intact
+  try {
+    return await ask(
+      `The following is a speech transcript that contains Tamil or a mix of Tamil and English (Tanglish / code-switching). ` +
+      `Translate all Tamil words and sentences into natural English. ` +
+      `English words that are already in the transcript must be kept exactly as-is. ` +
+      `Return only the translated transcript — no explanations, no labels:\n\n${text}`,
+    );
+  } catch {
+    return text; // if translation fails, return original rather than crashing
+  }
+}
+
 export async function transcribeAudio(audioBlob: Blob): Promise<string> {
   if (!API_KEY) throw new Error('Groq API key is not configured. Add EXPO_PUBLIC_GROQ_API_KEY to your .env file.');
 
   const formData = new FormData();
   formData.append('file', audioBlob, 'recording.webm');
   formData.append('model', 'whisper-large-v3-turbo');
-  formData.append('language', 'en');
+  formData.append('response_format', 'verbose_json'); // includes detected language
 
   const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
     method: 'POST',
@@ -79,7 +104,8 @@ export async function transcribeAudio(audioBlob: Blob): Promise<string> {
   }
 
   const data = await response.json();
-  return data.text?.trim() ?? '';
+  const text = data.text?.trim() ?? '';
+  return maybeTranslateToEnglish(text, data.language ?? '');
 }
 
 export async function extractBusinessCard(imageBase64: string, mimeType = 'image/jpeg'): Promise<string> {
@@ -151,7 +177,7 @@ export async function transcribeAudioNative(uri: string, ext = 'm4a'): Promise<s
   const formData = new FormData();
   formData.append('file', { uri, name: `recording.${ext}`, type: `audio/${ext}` } as any);
   formData.append('model', 'whisper-large-v3-turbo');
-  formData.append('language', 'en');
+  formData.append('response_format', 'verbose_json'); // includes detected language
 
   const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
     method: 'POST',
@@ -166,7 +192,8 @@ export async function transcribeAudioNative(uri: string, ext = 'm4a'): Promise<s
   }
 
   const data = await response.json();
-  return data.text?.trim() ?? '';
+  const text = data.text?.trim() ?? '';
+  return maybeTranslateToEnglish(text, data.language ?? '');
 }
 
 // ── Audio file upload & chunked transcription (web) ──────────────────────────
