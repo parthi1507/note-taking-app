@@ -79,16 +79,11 @@ Create a `.env` file in the root directory:
 
 ```env
 EXPO_PUBLIC_GROQ_API_KEY=your_groq_api_key_here
-EXPO_PUBLIC_FIREBASE_API_KEY=your_firebase_api_key
-EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
-EXPO_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
-EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.firebasestorage.app
-EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-EXPO_PUBLIC_FIREBASE_APP_ID=your_app_id
 ```
 
 Get a free Groq API key at [console.groq.com](https://console.groq.com).
-Get Firebase config from your [Firebase Console](https://console.firebase.google.com) project settings.
+
+> Firebase config is hardcoded in `app/services/firebase.ts` — no Firebase env vars needed.
 
 ---
 
@@ -190,7 +185,8 @@ note-taking-app/
 ├── __mocks__/                  # Jest mocks for Firebase, icons, and AsyncStorage
 ├── .github/
 │   └── workflows/
-│       └── ci.yml              # GitHub Actions CI pipeline
+│       ├── ci.yml              # GitHub Actions CI pipeline
+│       └── cd.yml              # GitHub Actions CD pipeline (APK build + OTA update)
 ├── App.tsx                     # Root — screen state machine + modal overlay
 ├── app.json                    # Expo app configuration
 ├── eas.json                    # EAS Build configuration
@@ -201,13 +197,20 @@ note-taking-app/
 
 ## CI/CD Pipeline
 
-Every pull request and push to `main` triggers automated checks via GitHub Actions:
+### CI Pipeline (runs on every Pull Request)
 
 1. **Lint** — ESLint code quality checks (zero warnings allowed)
 2. **Type Check** — TypeScript compilation validation
 3. **Tests** — Jest unit tests with coverage report
 
 All checks must pass before a PR can be merged.
+
+### CD Pipeline (runs on every push to `main`)
+
+1. **Build APK** — Builds Android APK on EAS servers and uploads to [GitHub Releases](https://github.com/parthi1507/note-taking-app/releases)
+2. **OTA Update** — Publishes an over-the-air update via EAS Update; users with the app already installed receive the update silently on next launch
+
+> **First-time setup:** Download the latest APK from GitHub Releases and install it. After that, all future updates are delivered automatically via OTA — no reinstall needed.
 
 ---
 
