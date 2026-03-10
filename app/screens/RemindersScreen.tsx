@@ -5,8 +5,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  Alert,
-  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../services/firebase';
@@ -93,7 +91,7 @@ export default function RemindersScreen({ onClose }: Props) {
     });
   };
 
-  const renderReminder = (r: Reminder, showDone = false) => {
+  const renderReminder = (r: Reminder) => {
     const overdue = !r.isDone && isOverdue(r.scheduledTime);
     return (
       <View key={r.id} style={[styles.card, overdue && styles.cardOverdue, r.isDone && styles.cardDone]}>
@@ -214,7 +212,7 @@ export default function RemindersScreen({ onClose }: Props) {
               <Ionicons name="checkmark-circle-outline" size={14} color="#34d399" />
               <Text style={[styles.sectionTitle, { color: '#34d399' }]}>Completed</Text>
             </View>
-            {done.map((r) => renderReminder(r, true))}
+            {done.map((r) => renderReminder(r))}
           </View>
         )}
 
