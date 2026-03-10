@@ -39,11 +39,13 @@ interface Props {
   onEditNote: (note: Note) => void;
   onLogout: () => void;
   onOpenChat: (notes: Note[], context: string) => void;
+  onOpenReminders: () => void;
+  pendingRemindersCount: number;
 }
 
 type ActiveTab = 'personal' | 'team';
 
-export default function HomeScreen({ onNewNote, onEditNote, onLogout, onOpenChat }: Props) {
+export default function HomeScreen({ onNewNote, onEditNote, onLogout, onOpenChat, onOpenReminders, pendingRemindersCount }: Props) {
   const { notes, searchQuery, setNotes, setSearchQuery, filteredNotes } = useNoteStore();
   const {
     workspaces, activeWorkspace, workspaceNotes, workspaceSearchQuery,
@@ -336,6 +338,19 @@ export default function HomeScreen({ onNewNote, onEditNote, onLogout, onOpenChat
               </TouchableOpacity>
             </>
           )}
+          {/* Reminders bell */}
+          <TouchableOpacity style={styles.avatarBtn} onPress={onOpenReminders}>
+            <View>
+              <Ionicons name="alarm-outline" size={20} color="#a78bfa" />
+              {pendingRemindersCount > 0 && (
+                <View style={styles.reminderBadge}>
+                  <Text style={styles.reminderBadgeText}>
+                    {pendingRemindersCount > 9 ? '9+' : pendingRemindersCount}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
           <TouchableOpacity onPress={onLogout} style={styles.avatarBtn}>
             <Ionicons name="log-out-outline" size={20} color="#a78bfa" />
           </TouchableOpacity>
@@ -853,6 +868,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(108,71,255,0.15)', borderRadius: 14, padding: 11,
     borderWidth: 1, borderColor: 'rgba(108,71,255,0.3)',
   },
+  reminderBadge: {
+    position: 'absolute', top: -5, right: -5,
+    backgroundColor: '#ff6b6b', borderRadius: 8,
+    minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center',
+  },
+  reminderBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
 
   // Tab bar
   tabBar: {

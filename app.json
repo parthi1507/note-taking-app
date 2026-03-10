@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "note-taking-app",
+    "name": "Notyx",
     "slug": "note-taking-app-parthiban15",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -28,9 +28,9 @@
     },
     "web": {
       "favicon": "./assets/favicon.svg",
-      "name": "NoteApp",
-      "shortName": "NoteApp",
-      "description": "My Notes - A modern note taking app",
+      "name": "Notyx",
+      "shortName": "Notyx",
+      "description": "Notyx - Smart AI-powered note taking app",
       "themeColor": "#6c47ff",
       "backgroundColor": "#0a0a14"
     },
@@ -38,20 +38,20 @@
       [
         "expo-av",
         {
-          "microphonePermission": "Allow NoteApp to access your microphone for voice recording."
+          "microphonePermission": "Allow Notyx to access your microphone for voice recording."
         }
       ],
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Allow NoteApp to access your location."
+          "locationWhenInUsePermission": "Allow Notyx to access your location."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow NoteApp to access your photos to scan business cards.",
-          "cameraPermission": "Allow NoteApp to take photos of business cards."
+          "photosPermission": "Allow Notyx to access your photos to scan business cards.",
+          "cameraPermission": "Allow Notyx to take photos of business cards."
         }
       ],
       "expo-font",

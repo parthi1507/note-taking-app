@@ -18,6 +18,7 @@ import { isValidEmail, getFirebaseErrorMessage } from '../utils/validation';
 interface Props {
   onNavigateToRegister?: () => void;
   onLoggedIn?: () => void;
+  onNavigateToForgotPassword?: () => void;
 }
 
 interface FieldErrors {
@@ -26,7 +27,7 @@ interface FieldErrors {
   general?: string;
 }
 
-export default function LoginScreen({ onNavigateToRegister, onLoggedIn }: Props) {
+export default function LoginScreen({ onNavigateToRegister, onLoggedIn, onNavigateToForgotPassword }: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -190,6 +191,16 @@ export default function LoginScreen({ onNavigateToRegister, onLoggedIn }: Props)
                   )}
                 </TouchableOpacity>
 
+                <TouchableOpacity
+                  style={styles.forgotBtn}
+                  onPress={onNavigateToForgotPassword}
+                  testID="forgot-password-link"
+                >
+                  <Text style={[styles.forgotText, { fontSize: fontSize.link }]}>
+                    Forgot password?
+                  </Text>
+                </TouchableOpacity>
+
                 <View style={styles.divider}>
                   <View style={styles.dividerLine} />
                   <Text style={styles.dividerText}>or</Text>
@@ -284,4 +295,6 @@ const styles = StyleSheet.create({
   secondaryButton: { alignItems: 'center' },
   secondaryText: { color: '#888' },
   secondaryHighlight: { color: '#6c47ff', fontWeight: '700' },
+  forgotBtn: { alignItems: 'flex-end', marginTop: 8 },
+  forgotText: { color: '#a78bfa', fontWeight: '500' },
 });
