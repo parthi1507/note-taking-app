@@ -177,5 +177,5 @@ export async function pickAndReadPDF(): Promise<{ buffer: ArrayBuffer; name: str
   // Convert base64 → Uint8Array without atob (safer across Hermes versions)
   const bytes = base64ToBytes(base64);
 
-  return { buffer: bytes.buffer, name };
+  return { buffer: bytes.buffer as ArrayBuffer, name };
 }
