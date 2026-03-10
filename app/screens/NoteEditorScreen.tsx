@@ -10,10 +10,14 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../services/firebase';
 import { createNote, updateNote, deleteNote } from '../services/noteService';
+import { createReminder } from '../services/reminderService';
+import { extractTextFromPDF, pickAndReadPDF } from '../services/pdfService';
+import { structureNoteFromText } from '../services/groqService';
 import { useWorkspaceStore } from '../store/workspaceStore';
 import { generateSummary, generateTitle, generateTags, transcribeAudio, transcribeAudioNative, transcribeAudioFile, transcribeAudioFileNative, extractBusinessCard } from '../services/groqService';
 import { Note, NOTE_COLORS } from '../types/note';
@@ -32,7 +36,7 @@ interface Props {
   onColorChange?: (color: string) => void;
 }
 
-type AiAction = 'summary' | 'title' | 'tags' | 'transcribe' | 'uploadAudio' | 'scanCard' | null;
+type AiAction = 'summary' | 'title' | 'tags' | 'transcribe' | 'uploadAudio' | 'scanCard' | 'importPDF' | null;
 
 export default function NoteEditorScreen({ note, initialTitle = '', initialContent = '', onBack, isModal = false, onColorChange }: Props) {
   const [title, setTitle] = useState(note?.title ?? initialTitle);
@@ -64,6 +68,15 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
   const [isRecording, setIsRecording] = useState(false);
   const [editorFormats, setEditorFormats] = useState<Record<string, boolean>>({});
   const [editorBlock, setEditorBlock] = useState<string | null>(null);
+  const [showReminderModal, setShowReminderModal] = useState(false);
+  const [reminderMessage, setReminderMessage] = useState('');
+  const [reminderCustomDate, setReminderCustomDate] = useState('');
+  const [reminderSaving, setReminderSaving] = useState(false);
+  const [pdfBanner, setPdfBanner] = useState('');
+  // Mobile native date/time picker state
+  const [nativePickerDate, setNativePickerDate] = useState(new Date());
+  const [showNativeDatePicker, setShowNativeDatePicker] = useState(false);
+  const [showNativeTimePicker, setShowNativeTimePicker] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const insertTextRef = useRef<((text: string) => void) | null>(null);
@@ -236,6 +249,60 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
     }
   };
 
+  const handleSaveReminder = async (scheduledTime: Date) => {
+    const user = auth.currentUser;
+    if (!user) return;
+    const noteTitle = title.trim() || 'Untitled Note';
+    setReminderSaving(true);
+    try {
+      const isTeam = !!(note?.workspaceId || activeWorkspace);
+      await createReminder({
+        userId: user.uid,
+        noteId: note?.id ?? '',
+        noteTitle,
+        message: reminderMessage.trim() || `Reminder for: ${noteTitle}`,
+        scheduledTime: scheduledTime.toISOString(),
+        source: isTeam ? 'team' : 'personal',
+        ...(isTeam && (note?.workspaceId || activeWorkspace)
+          ? { workspaceName: activeWorkspace?.name ?? 'Team' }
+          : {}),
+      });
+      setShowReminderModal(false);
+      setReminderMessage('');
+      setReminderCustomDate('');
+      Alert.alert('Reminder Set!', `You'll be reminded ${formatReminderLabel(scheduledTime)}.`);
+    } catch {
+      Alert.alert('Error', 'Failed to set reminder. Please try again.');
+    } finally {
+      setReminderSaving(false);
+    }
+  };
+
+  const formatReminderLabel = (d: Date): string => {
+    const diff = d.getTime() - Date.now();
+    if (diff < 3600000) return `in ${Math.floor(diff / 60000)} minutes`;
+    if (diff < 86400000) return `in ${Math.floor(diff / 3600000)} hours`;
+    return `on ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} at ${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
+  };
+
+  const getQuickTimes = () => {
+    const now = new Date();
+    const in1h = new Date(now.getTime() + 3600000);
+    const in3h = new Date(now.getTime() + 3 * 3600000);
+    const tomorrow9am = new Date(now);
+    tomorrow9am.setDate(tomorrow9am.getDate() + 1);
+    tomorrow9am.setHours(9, 0, 0, 0);
+    const nextWeek = new Date(now);
+    nextWeek.setDate(nextWeek.getDate() + 7);
+    nextWeek.setHours(9, 0, 0, 0);
+    return [
+      { label: 'In 1 hour', date: in1h },
+      { label: 'In 3 hours', date: in3h },
+      { label: 'Tomorrow 9am', date: tomorrow9am },
+      { label: 'Next week', date: nextWeek },
+    ];
+  };
+
   const handleAiSummary = async () => {
     if (!stripHtml(content)) {
       Alert.alert('No content', 'Write some content first to summarize.');
@@ -280,6 +347,51 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
       setTags(merged);
     } catch {
       Alert.alert('AI Error', 'Failed to generate tags. Try again.');
+    } finally {
+      setAiLoading(null);
+    }
+  };
+
+  const handleImportPDF = async () => {
+    setAiLoading('importPDF');
+    try {
+      const picked = await pickAndReadPDF();
+      if (!picked) { setAiLoading(null); return; }
+
+      const rawText = await extractTextFromPDF(picked.buffer);
+      if (!rawText || rawText.length < 10 || rawText.startsWith('Could not extract')) {
+        if (Platform.OS === 'web') {
+          setPdfBanner('✗ No readable text found in this PDF (may be a scanned image).');
+          setTimeout(() => setPdfBanner(''), 4000);
+        } else {
+          Alert.alert('No Text Found', 'This PDF does not contain readable text. It may use compressed or image-based content.');
+        }
+        return;
+      }
+
+      const structured = await structureNoteFromText(rawText, picked.name);
+      setTitle(structured.title);
+      setTags((prev) => [...new Set([...prev, ...structured.tags])].slice(0, 5));
+
+      if (Platform.OS === 'web' && insertTextRef.current) {
+        insertTextRef.current(structured.content);
+        // Re-focus editor after insertion so the user can type immediately.
+        // Do NOT use Alert.alert here — window.alert() steals focus from
+        // the contentEditable and the editor becomes unresponsive.
+        setPdfBanner(`✓ "${structured.title}" imported from PDF`);
+        setTimeout(() => setPdfBanner(''), 3500);
+      } else {
+        setContent(structured.content);
+        Alert.alert('PDF Imported!', `"${structured.title}" has been created from your PDF.`);
+      }
+    } catch (err: any) {
+      const msg = err?.message ?? 'Could not read the PDF. Please try another file.';
+      if (Platform.OS === 'web') {
+        setPdfBanner(`✗ ${msg}`);
+        setTimeout(() => setPdfBanner(''), 4000);
+      } else {
+        Alert.alert('Import Failed', msg);
+      }
     } finally {
       setAiLoading(null);
     }
@@ -593,6 +705,9 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
         </View>
 
         <View style={styles.topActions}>
+          <TouchableOpacity onPress={() => setShowReminderModal(true)} style={styles.iconBtn}>
+            <Ionicons name="alarm-outline" size={20} color="#a78bfa" />
+          </TouchableOpacity>
           {isEditing && (
             <TouchableOpacity onPress={handleDelete} style={styles.iconBtn}>
               <Ionicons name="trash-outline" size={20} color="#ff6b6b" />
@@ -612,6 +727,15 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
         <View style={styles.lastEditedBar}>
           <Ionicons name="pencil-outline" size={12} color="#555" />
           <Text style={styles.lastEditedText}>Last edited by {note.lastEditedBy}</Text>
+        </View>
+      ) : null}
+
+      {/* PDF import success/error banner — non-blocking, no focus steal */}
+      {pdfBanner ? (
+        <View style={[styles.pdfBanner, pdfBanner.startsWith('✗') && styles.pdfBannerError]}>
+          <Text style={[styles.pdfBannerText, pdfBanner.startsWith('✗') && styles.pdfBannerTextError]}>
+            {pdfBanner}
+          </Text>
         </View>
       ) : null}
 
@@ -684,6 +808,18 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
                 <ActivityIndicator size="small" color="#6c47ff" />
               ) : (
                 <Text style={styles.aiBtnText}>📇 Scan Card</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.aiBtn, styles.aiBtnPDF]}
+              onPress={handleImportPDF}
+              disabled={!!aiLoading}
+            >
+              {aiLoading === 'importPDF' ? (
+                <ActivityIndicator size="small" color="#f59e0b" />
+              ) : (
+                <Text style={[styles.aiBtnText, { color: '#f59e0b' }]}>📄 Import PDF</Text>
               )}
             </TouchableOpacity>
 
@@ -942,9 +1078,247 @@ export default function NoteEditorScreen({ note, initialTitle = '', initialConte
         </View>
       </ScrollView>
 
+      {/* ── Reminder Modal ── */}
+      <Modal
+        visible={showReminderModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowReminderModal(false)}
+      >
+        <TouchableOpacity
+          style={reminderStyles.backdrop}
+          activeOpacity={1}
+          onPress={() => setShowReminderModal(false)}
+        />
+        <View style={reminderStyles.sheet}>
+          <View style={reminderStyles.handle} />
+
+          <View style={reminderStyles.sheetHeader}>
+            <Ionicons name="alarm-outline" size={20} color="#a78bfa" />
+            <Text style={reminderStyles.sheetTitle}>Set Reminder</Text>
+          </View>
+
+          {/* Quick presets */}
+          <Text style={reminderStyles.sectionLabel}>QUICK SELECT</Text>
+          <View style={reminderStyles.quickRow}>
+            {getQuickTimes().map((q) => (
+              <TouchableOpacity
+                key={q.label}
+                style={reminderStyles.quickBtn}
+                onPress={() => handleSaveReminder(q.date)}
+                disabled={reminderSaving}
+              >
+                <Text style={reminderStyles.quickBtnText}>{q.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Custom date/time */}
+          <Text style={reminderStyles.sectionLabel}>CUSTOM DATE & TIME</Text>
+          {Platform.OS === 'web' ? (
+            <>
+              {React.createElement('input', {
+                type: 'datetime-local',
+                value: reminderCustomDate,
+                min: new Date(Date.now() + 60000).toISOString().slice(0, 16),
+                onChange: (e: any) => setReminderCustomDate(e.target.value),
+                style: {
+                  backgroundColor: 'rgba(255,255,255,0.07)',
+                  border: '1px solid rgba(108,71,255,0.3)',
+                  borderRadius: 10, color: '#fff',
+                  padding: '12px 14px', fontSize: 14,
+                  width: '100%', marginBottom: 12,
+                  colorScheme: 'dark',
+                },
+              })}
+              {reminderCustomDate ? (
+                <TouchableOpacity
+                  style={[reminderStyles.setBtn, reminderSaving && { opacity: 0.6 }]}
+                  onPress={() => {
+                    const d = new Date(reminderCustomDate);
+                    if (isNaN(d.getTime()) || d <= new Date()) {
+                      Alert.alert('Invalid Date', 'Please pick a future date and time.');
+                      return;
+                    }
+                    handleSaveReminder(d);
+                  }}
+                  disabled={reminderSaving}
+                >
+                  {reminderSaving ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={reminderStyles.setBtnText}>Set Custom Reminder</Text>
+                  )}
+                </TouchableOpacity>
+              ) : null}
+            </>
+          ) : (
+            /* Mobile: native date + time picker */
+            <>
+              <View style={reminderStyles.nativePickerRow}>
+                <TouchableOpacity
+                  style={reminderStyles.nativePickerBtn}
+                  onPress={() => { setShowNativeDatePicker(true); setShowNativeTimePicker(false); }}
+                >
+                  <Ionicons name="calendar-outline" size={16} color="#a78bfa" />
+                  <Text style={reminderStyles.nativePickerBtnText}>
+                    {nativePickerDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={reminderStyles.nativePickerBtn}
+                  onPress={() => { setShowNativeTimePicker(true); setShowNativeDatePicker(false); }}
+                >
+                  <Ionicons name="time-outline" size={16} color="#a78bfa" />
+                  <Text style={reminderStyles.nativePickerBtnText}>
+                    {nativePickerDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {showNativeDatePicker && (() => {
+                try {
+                  const DateTimePicker = require('@react-native-community/datetimepicker').default;
+                  return (
+                    <DateTimePicker
+                      value={nativePickerDate}
+                      mode="date"
+                      minimumDate={new Date()}
+                      display="default"
+                      onChange={(_: any, selected?: Date) => {
+                        setShowNativeDatePicker(false);
+                        if (selected) setNativePickerDate(selected);
+                      }}
+                    />
+                  );
+                } catch { return null; }
+              })()}
+
+              {showNativeTimePicker && (() => {
+                try {
+                  const DateTimePicker = require('@react-native-community/datetimepicker').default;
+                  return (
+                    <DateTimePicker
+                      value={nativePickerDate}
+                      mode="time"
+                      display="default"
+                      onChange={(_: any, selected?: Date) => {
+                        setShowNativeTimePicker(false);
+                        if (selected) {
+                          const merged = new Date(nativePickerDate);
+                          merged.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
+                          setNativePickerDate(merged);
+                        }
+                      }}
+                    />
+                  );
+                } catch { return null; }
+              })()}
+
+              <TouchableOpacity
+                style={[reminderStyles.setBtn, reminderSaving && { opacity: 0.6 }]}
+                onPress={() => {
+                  if (nativePickerDate <= new Date()) {
+                    Alert.alert('Invalid Time', 'Please pick a future date and time.');
+                    return;
+                  }
+                  handleSaveReminder(nativePickerDate);
+                }}
+                disabled={reminderSaving}
+              >
+                {reminderSaving ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={reminderStyles.setBtnText}>Set Custom Reminder</Text>
+                )}
+              </TouchableOpacity>
+            </>
+          )}
+
+          {/* Optional message */}
+          <Text style={reminderStyles.sectionLabel}>NOTE (OPTIONAL)</Text>
+          <TextInput
+            style={reminderStyles.msgInput}
+            placeholder="e.g. Review before the meeting"
+            placeholderTextColor="#555"
+            value={reminderMessage}
+            onChangeText={setReminderMessage}
+            multiline
+          />
+
+          <TouchableOpacity
+            style={reminderStyles.cancelBtn}
+            onPress={() => { setShowReminderModal(false); setReminderMessage(''); setReminderCustomDate(''); }}
+          >
+            <Text style={reminderStyles.cancelBtnText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
     </KeyboardAvoidingView>
   );
 }
+
+const reminderStyles = StyleSheet.create({
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  sheet: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    backgroundColor: '#12121f',
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    borderWidth: 1, borderColor: 'rgba(108,71,255,0.25)',
+    padding: 24, paddingBottom: 36,
+  },
+  handle: {
+    width: 40, height: 4, backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 2, alignSelf: 'center', marginBottom: 20,
+  },
+  sheetHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 20 },
+  sheetTitle: { fontSize: 18, fontWeight: '700', color: '#f0f0ff' },
+  sectionLabel: {
+    fontSize: 10, fontWeight: '700', color: '#555', letterSpacing: 1.2,
+    marginBottom: 10,
+  },
+  quickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
+  quickBtn: {
+    backgroundColor: 'rgba(108,71,255,0.15)',
+    borderWidth: 1, borderColor: 'rgba(108,71,255,0.3)',
+    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10,
+  },
+  quickBtnText: { color: '#a78bfa', fontSize: 14, fontWeight: '500' },
+  customInput: {
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1, borderColor: 'rgba(108,71,255,0.3)',
+    borderRadius: 10, color: '#fff', fontSize: 14,
+    paddingHorizontal: 14, paddingVertical: 12, marginBottom: 12,
+  },
+  nativePickerRow: {
+    flexDirection: 'row', gap: 10, marginBottom: 14,
+  },
+  nativePickerBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1, borderColor: 'rgba(108,71,255,0.3)',
+    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11,
+  },
+  nativePickerBtnText: { color: '#a78bfa', fontSize: 13, fontWeight: '500', flex: 1 },
+  setBtn: {
+    backgroundColor: '#6c47ff', borderRadius: 12,
+    paddingVertical: 13, alignItems: 'center', marginBottom: 20,
+  },
+  setBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  msgInput: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 10, color: '#ccc', fontSize: 14,
+    paddingHorizontal: 14, paddingVertical: 12,
+    minHeight: 60, marginBottom: 16,
+  },
+  cancelBtn: { alignItems: 'center', paddingVertical: 8 },
+  cancelBtnText: { color: '#666', fontSize: 14 },
+});
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0f0f1a', paddingTop: 56 },
@@ -1001,6 +1375,18 @@ const styles = StyleSheet.create({
     minWidth: 80, alignItems: 'center',
   },
   aiBtnText: { color: '#a78bfa', fontSize: 13, fontWeight: '600' },
+  aiBtnPDF: { borderColor: 'rgba(245,158,11,0.35)', backgroundColor: 'rgba(245,158,11,0.08)' },
+  pdfBanner: {
+    backgroundColor: 'rgba(16,185,129,0.12)',
+    borderBottomWidth: 1, borderBottomColor: 'rgba(16,185,129,0.25)',
+    paddingHorizontal: 20, paddingVertical: 8,
+  },
+  pdfBannerError: {
+    backgroundColor: 'rgba(255,107,107,0.1)',
+    borderBottomColor: 'rgba(255,107,107,0.25)',
+  },
+  pdfBannerText: { color: '#34d399', fontSize: 13, fontWeight: '500' },
+  pdfBannerTextError: { color: '#ff6b6b' },
   summaryBox: {
     backgroundColor: 'rgba(108,71,255,0.08)',
     borderWidth: 1, borderColor: 'rgba(108,71,255,0.2)',

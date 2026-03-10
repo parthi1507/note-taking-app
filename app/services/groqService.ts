@@ -60,6 +60,46 @@ export async function generateTags(content: string): Promise<string[]> {
     .slice(0, 5);
 }
 
+/** Takes raw text extracted from a PDF and returns a structured note */
+export async function structureNoteFromText(
+  rawText: string,
+  filename: string
+): Promise<{ title: string; content: string; tags: string[] }> {
+  const truncated = rawText.slice(0, 6000); // stay within token limits
+
+  const result = await ask(
+    `You are a note-taking assistant. A user has imported a PDF file named "${filename}".
+Extract and structure the content into a clean note.
+
+Return ONLY a valid JSON object in this exact format (no markdown, no extra text):
+{
+  "title": "a short descriptive title (max 8 words)",
+  "content": "the main content as clean readable paragraphs (max 400 words)",
+  "tags": ["tag1", "tag2", "tag3"]
+}
+
+PDF content:
+${truncated}`,
+    1024
+  );
+
+  try {
+    const jsonMatch = result.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON found');
+    const parsed = JSON.parse(jsonMatch[0]);
+    return {
+      title: parsed.title ?? filename.replace('.pdf', ''),
+      content: parsed.content ?? rawText.slice(0, 1000),
+      tags: Array.isArray(parsed.tags) ? parsed.tags.slice(0, 5) : [],
+    };
+  } catch {
+    // Fallback if AI returns malformed JSON
+    const fallbackTitle = await generateTitle(truncated.slice(0, 500));
+    const fallbackTags = await generateTags(truncated.slice(0, 500));
+    return { title: fallbackTitle, content: rawText.slice(0, 2000), tags: fallbackTags };
+  }
+}
+
 /**
  * Shared post-processor: if Whisper detected Tamil (including Tamil+English
  * code-switching), translate the transcript to English via Groq LLM.

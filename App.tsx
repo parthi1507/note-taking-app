@@ -6,6 +6,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   useWindowDimensions,
+  Platform,
 } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -16,10 +17,14 @@ import RegisterScreen from './app/screens/RegisterScreen';
 import HomeScreen from './app/screens/HomeScreen';
 import NoteEditorScreen from './app/screens/NoteEditorScreen';
 import AIChatScreen from './app/screens/AIChatScreen';
+import ForgotPasswordScreen from './app/screens/ForgotPasswordScreen';
+import ResetPasswordScreen from './app/screens/ResetPasswordScreen';
+import RemindersScreen from './app/screens/RemindersScreen';
 import { Note, NOTE_COLORS } from './app/types/note';
 import { NoteTemplate } from './app/data/templates';
+import { registerForNotifications, subscribeToReminders, checkAndMarkDueReminders } from './app/services/reminderService';
 
-type Screen = 'login' | 'register' | 'home';
+type Screen = 'login' | 'register' | 'home' | 'forgotPassword' | 'resetPassword';
 
 export default function App() {
   const { width, height } = useWindowDimensions();
@@ -27,6 +32,7 @@ export default function App() {
 
   const [screen, setScreen] = useState<Screen>('login');
   const [authReady, setAuthReady] = useState(false);
+  const [resetOobCode, setResetOobCode] = useState('');
   const [editingNote, setEditingNote] = useState<Note | undefined>(undefined);
   const [initialTitle, setInitialTitle] = useState('');
   const [initialContent, setInitialContent] = useState('');
@@ -38,13 +44,54 @@ export default function App() {
   const [chatContext, setChatContext] = useState('Personal Notes');
   const chatAnim = useRef(new Animated.Value(0)).current;
 
+  const [remindersVisible, setRemindersVisible] = useState(false);
+  const [pendingRemindersCount, setPendingRemindersCount] = useState(0);
+  const remindersAnim = useRef(new Animated.Value(0)).current;
+
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const modalAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    // Handle Firebase password-reset redirect on web
+    if (Platform.OS === 'web') {
+      const params = new URLSearchParams(window.location.search);
+      const mode = params.get('mode');
+      const oobCode = params.get('oobCode');
+      if (mode === 'resetPassword' && oobCode) {
+        setResetOobCode(oobCode);
+        setScreen('resetPassword');
+        setAuthReady(true);
+        window.history.replaceState({}, '', window.location.pathname);
+        return () => {};
+      }
+    }
+
     const unsub = onAuthStateChanged(auth, (user) => {
       setScreen(user ? 'home' : 'login');
       setAuthReady(true);
+      if (user) {
+        registerForNotifications();
+        // Subscribe to pending reminder count
+        const unsubReminders = subscribeToReminders(user.uid, (reminders) => {
+          const now = new Date();
+          const pending = reminders.filter(
+            (r) => !r.isDone && new Date(r.scheduledTime) > now
+          );
+          const overdue = reminders.filter(
+            (r) => !r.isDone && new Date(r.scheduledTime) <= now
+          );
+          setPendingRemindersCount(pending.length + overdue.length);
+        });
+        // On web, check for any overdue reminders to alert user
+        if (Platform.OS === 'web') {
+          checkAndMarkDueReminders(user.uid).then((due) => {
+            if (due.length > 0) {
+              // Will show badge in header; user opens reminders screen to see them
+            }
+          });
+        }
+        return unsubReminders;
+      }
     });
     return unsub;
   }, []);
@@ -92,6 +139,22 @@ export default function App() {
     Animated.timing(modalAnim, {
       toValue: 0, duration: 220, useNativeDriver: true,
     }).start(() => setEditorVisible(false));
+  };
+
+  const openReminders = () => {
+    remindersAnim.setValue(0);
+    setRemindersVisible(true);
+    setTimeout(() => {
+      Animated.spring(remindersAnim, {
+        toValue: 1, useNativeDriver: true, tension: 58, friction: 12,
+      }).start();
+    }, 10);
+  };
+
+  const closeReminders = () => {
+    Animated.timing(remindersAnim, {
+      toValue: 0, duration: 220, useNativeDriver: true,
+    }).start(() => setRemindersVisible(false));
   };
 
   const openChat = (notes: Note[], context: string) => {
@@ -158,18 +221,31 @@ export default function App() {
             onEditNote={handleEditNote}
             onLogout={handleLogout}
             onOpenChat={openChat}
+            onOpenReminders={openReminders}
+            pendingRemindersCount={pendingRemindersCount}
           />
         ) : screen === 'login' ? (
           <LoginScreen
             onNavigateToRegister={() => navigateTo('register')}
             onLoggedIn={() => navigateTo('home')}
+            onNavigateToForgotPassword={() => navigateTo('forgotPassword')}
           />
-        ) : (
+        ) : screen === 'register' ? (
           <RegisterScreen
             onNavigateToLogin={() => navigateTo('login')}
             onRegistered={() => navigateTo('home')}
           />
-        )}
+        ) : screen === 'forgotPassword' ? (
+          <ForgotPasswordScreen
+            onNavigateToLogin={() => navigateTo('login')}
+          />
+        ) : screen === 'resetPassword' ? (
+          <ResetPasswordScreen
+            oobCode={resetOobCode}
+            onSuccess={() => navigateTo('login')}
+            onNavigateToLogin={() => navigateTo('login')}
+          />
+        ) : null}
       </Animated.View>
 
       {/* Editor modal overlay */}
@@ -268,6 +344,51 @@ export default function App() {
               <View style={[styles.accentLine, { backgroundColor: '#6c47ff' }]} />
               {isMobile && <View style={styles.dragHandle} />}
               <AIChatScreen notes={chatNotes} context={chatContext} onClose={closeChat} />
+            </Animated.View>
+          </View>
+        </>
+      )}
+
+      {/* Reminders modal overlay */}
+      {remindersVisible && (
+        <>
+          <TouchableOpacity
+            style={[StyleSheet.absoluteFill, styles.backdropTouch]}
+            activeOpacity={1}
+            onPress={closeReminders}
+          >
+            <Animated.View
+              style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.72)', opacity: remindersAnim }]}
+            />
+          </TouchableOpacity>
+
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              styles.cardContainer,
+              { justifyContent: isMobile ? 'flex-end' : 'center', alignItems: 'center' },
+            ]}
+            pointerEvents="box-none"
+          >
+            <Animated.View
+              style={[
+                styles.card,
+                isMobile ? styles.cardMobile : styles.cardDesktop,
+                {
+                  width: isMobile ? width : Math.min(480, width - 80),
+                  height: isMobile ? height * 0.82 : height * 0.78,
+                  borderColor: 'rgba(108,71,255,0.4)',
+                  shadowColor: '#6c47ff',
+                  transform: isMobile
+                    ? [{ translateY: remindersAnim.interpolate({ inputRange: [0, 1], outputRange: [height * 0.82, 0] }) }]
+                    : [{ scale: remindersAnim.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1] }) }],
+                  opacity: isMobile ? 1 : remindersAnim,
+                },
+              ]}
+            >
+              <View style={[styles.accentLine, { backgroundColor: '#a78bfa' }]} />
+              {isMobile && <View style={styles.dragHandle} />}
+              <RemindersScreen onClose={closeReminders} />
             </Animated.View>
           </View>
         </>
