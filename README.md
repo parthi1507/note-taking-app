@@ -81,11 +81,16 @@ Create a `.env` file in the root directory:
 
 ```env
 EXPO_PUBLIC_GROQ_API_KEY=your_groq_api_key_here
+EXPO_PUBLIC_FIREBASE_API_KEY=your_firebase_api_key
+EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+EXPO_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
+EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.firebasestorage.app
+EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+EXPO_PUBLIC_FIREBASE_APP_ID=your_app_id
 ```
 
 Get a free Groq API key at [console.groq.com](https://console.groq.com).
-
-> Firebase config is hardcoded in `app/services/firebase.ts` — no Firebase env vars needed.
+Get Firebase config from your [Firebase Console](https://console.firebase.google.com) → Project Settings → Your apps.
 
 ---
 
