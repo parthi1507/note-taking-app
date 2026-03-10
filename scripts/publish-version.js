@@ -11,12 +11,12 @@ const { initializeApp } = require('firebase/app');
 const { getFirestore, doc, setDoc } = require('firebase/firestore');
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDSrSbE3VbEW0Mjao3gQTmxJx2lFJCbPrs",
-  authDomain: "note-taking-app-parthiban15.firebaseapp.com",
-  projectId: "note-taking-app-parthiban15",
-  storageBucket: "note-taking-app-parthiban15.firebasestorage.app",
-  messagingSenderId: "929929523296",
-  appId: "1:929929523296:web:4f9d91fc33e6e4fc0c1e58"
+  apiKey: "AIzaSyCc2ZGZ5LCU1_lgWNdMyloWwYxw0tR2OcA",
+  authDomain: "note-taking-app-d6870.firebaseapp.com",
+  projectId: "note-taking-app-d6870",
+  storageBucket: "note-taking-app-d6870.firebasestorage.app",
+  messagingSenderId: "886143996395",
+  appId: "1:886143996395:web:c2786ddd905d6ce29449ae"
 };
 
 const args = process.argv.slice(2);
