@@ -10,6 +10,7 @@ import {
   Modal,
   Platform,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -33,6 +34,8 @@ import { Note } from '../types/note';
 import { Workspace } from '../types/workspace';
 import { NoteTemplate } from '../data/templates';
 import { generateWeeklyReport } from '../services/groqService';
+import { getLatestVersionInfo, isNewerVersion, AppUpdateInfo } from '../services/updateService';
+import Constants from 'expo-constants';
 
 interface Props {
   onNewNote: (template?: NoteTemplate) => void;
@@ -75,6 +78,10 @@ export default function HomeScreen({ onNewNote, onEditNote, onLogout, onOpenChat
   const [reportText, setReportText] = useState('');
   const [reportLoading, setReportLoading] = useState(false);
 
+  // App update
+  const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
+  const [updateDismissed, setUpdateDismissed] = useState(false);
+
   // Invite code session
   const [inviteCodeData, setInviteCodeData] = useState<{ code: string; expiresAt: Date } | null>(null);
   const [countdown, setCountdown] = useState(0);
@@ -82,6 +89,18 @@ export default function HomeScreen({ onNewNote, onEditNote, onLogout, onOpenChat
 
   const { isMobile, isTablet, noteCardWidth, width } = useResponsive();
   const insets = useSafeAreaInsets();
+
+  // Check for app update on mount
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    getLatestVersionInfo().then((info) => {
+      if (!info) return;
+      const currentVersion = Constants.expoConfig?.version ?? '0.0.0';
+      if (isNewerVersion(currentVersion, info.version)) {
+        setUpdateInfo(info);
+      }
+    });
+  }, []);
 
   // Subscribe to personal notes on mount
   useEffect(() => {
@@ -356,6 +375,38 @@ export default function HomeScreen({ onNewNote, onEditNote, onLogout, onOpenChat
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Update banner */}
+      {updateInfo && !updateDismissed && (
+        <TouchableOpacity
+          style={styles.updateBanner}
+          onPress={() => Linking.openURL(updateInfo.apkUrl)}
+          activeOpacity={0.85}
+        >
+          <View style={styles.updateBannerLeft}>
+            <Ionicons name="arrow-up-circle" size={18} color="#0a0a14" />
+            <View style={styles.updateBannerTextWrap}>
+              <Text style={styles.updateBannerTitle}>
+                New version {updateInfo.version} available
+              </Text>
+              {updateInfo.releaseNotes ? (
+                <Text style={styles.updateBannerSub} numberOfLines={1}>
+                  {updateInfo.releaseNotes}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+          <View style={styles.updateBannerRight}>
+            <Text style={styles.updateBannerDownload}>Download</Text>
+            <TouchableOpacity
+              onPress={(e) => { e.stopPropagation?.(); setUpdateDismissed(true); }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="close" size={16} color="#0a0a14" style={{ marginLeft: 8 }} />
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      )}
 
       {/* Tab bar */}
       <View style={styles.tabBar}>
@@ -874,6 +925,22 @@ const styles = StyleSheet.create({
     minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center',
   },
   reminderBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
+
+  // Update banner
+  updateBanner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#a78bfa', marginHorizontal: 24, marginBottom: 10,
+    borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14,
+  },
+  updateBannerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  updateBannerTextWrap: { marginLeft: 8, flex: 1 },
+  updateBannerTitle: { color: '#0a0a14', fontSize: 13, fontWeight: '700' },
+  updateBannerSub: { color: '#0a0a14', fontSize: 11, opacity: 0.75, marginTop: 1 },
+  updateBannerRight: { flexDirection: 'row', alignItems: 'center', marginLeft: 8 },
+  updateBannerDownload: {
+    color: '#0a0a14', fontSize: 12, fontWeight: '800',
+    borderBottomWidth: 1, borderBottomColor: '#0a0a14',
+  },
 
   // Tab bar
   tabBar: {

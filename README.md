@@ -1,6 +1,7 @@
-# Notyx
+# Note Taking App
 
 ![CI](https://github.com/parthi1507/note-taking-app/actions/workflows/ci.yml/badge.svg)
+![Version](https://img.shields.io/badge/version-1.0.0-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20Web-lightgrey)
 ![Expo](https://img.shields.io/badge/expo-55-black)
@@ -31,6 +32,7 @@ A modern, cross-platform note-taking application built with React Native and Exp
 - **Modal Card Editor** — Notes open as a responsive modal (slide-up sheet on mobile, centered card on desktop)
 - **User Auth** — Email/password sign-up and login via Firebase Auth with persistent session (stays logged in across app restarts)
 - **Forgot Password** — Send a password reset email; web users reset via in-app redirect link with a password strength indicator; native users reset via Firebase email link
+- **In-App Update Banner** — Users are notified of new versions with a banner inside the app; tapping it downloads the latest APK directly
 - **Responsive UI** — Optimized for mobile, tablet, and desktop screen sizes
 - **Dark Theme** — Dark glassmorphism design throughout
 
@@ -53,7 +55,7 @@ A modern, cross-platform note-taking application built with React Native and Exp
 | State Management | Zustand |
 | Navigation | Prop-drilled screen state machine (no React Navigation router) |
 | Build | EAS Build (Expo Application Services) |
-| CI/CD | GitHub Actions |
+| CI | GitHub Actions |
 
 ---
 
@@ -119,6 +121,26 @@ Download the APK from the link provided after the build completes.
 
 ---
 
+## Releasing a New Version
+
+After building the APK, publish the new version so users see an in-app update banner:
+
+```bash
+node scripts/publish-version.js --version 1.0.1 --url "https://expo.dev/artifacts/eas/your-apk-link.apk" --notes "What changed in this version"
+```
+
+Users will see a banner at the top of the app prompting them to download and install the new APK.
+
+**Full release steps:**
+
+1. Update `"version"` in `app.json`
+2. Push code to GitHub
+3. Run `eas build -p android --profile preview`
+4. Copy the APK URL from EAS
+5. Run `node scripts/publish-version.js` with the new version and URL
+
+---
+
 ## Quality Checks
 
 ```bash
@@ -168,6 +190,7 @@ note-taking-app/
 │   │   ├── noteService.ts
 │   │   ├── pdfService.ts       # PDF pick + cross-platform text extraction
 │   │   ├── reminderService.ts  # Firestore reminders + expo-notifications scheduling
+│   │   ├── updateService.ts    # App version check + update banner logic
 │   │   └── workspaceService.ts # Team workspace CRUD + timed invite code generation
 │   ├── hooks/                  # Custom React hooks
 │   │   ├── useResponsive.ts    # Breakpoint-aware layout values
@@ -183,10 +206,11 @@ note-taking-app/
 │   │   └── validation.ts
 │   └── screens/__tests__/      # Jest unit tests
 ├── __mocks__/                  # Jest mocks for Firebase, icons, and AsyncStorage
+├── scripts/
+│   └── publish-version.js      # CLI script to publish new version + APK URL to Firestore
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml              # GitHub Actions CI pipeline
-│       └── cd.yml              # GitHub Actions CD pipeline (APK build + OTA update)
+│       └── ci.yml              # GitHub Actions CI pipeline
 ├── App.tsx                     # Root — screen state machine + modal overlay
 ├── app.json                    # Expo app configuration
 ├── eas.json                    # EAS Build configuration
@@ -195,22 +219,15 @@ note-taking-app/
 
 ---
 
-## CI/CD Pipeline
+## CI Pipeline
 
-### CI Pipeline (runs on every Pull Request)
+Runs on every Pull Request:
 
 1. **Lint** — ESLint code quality checks (zero warnings allowed)
 2. **Type Check** — TypeScript compilation validation
 3. **Tests** — Jest unit tests with coverage report
 
 All checks must pass before a PR can be merged.
-
-### CD Pipeline (runs on every push to `main`)
-
-1. **Build APK** — Builds Android APK on EAS servers and uploads to [GitHub Releases](https://github.com/parthi1507/note-taking-app/releases)
-2. **OTA Update** — Publishes an over-the-air update via EAS Update; users with the app already installed receive the update silently on next launch
-
-> **First-time setup:** Download the latest APK from GitHub Releases and install it. After that, all future updates are delivered automatically via OTA — no reinstall needed.
 
 ---
 
