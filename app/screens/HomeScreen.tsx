@@ -441,24 +441,6 @@ export default function HomeScreen({ onNewNote, onEditNote, onLogout, onOpenChat
       {/* ── PERSONAL TAB ── */}
       {activeTab === 'personal' && (
         <>
-          {/* Stats row */}
-          <View style={styles.statsRow}>
-            <View style={styles.statCard}>
-              <Text style={styles.statNum}>{notes.length}</Text>
-              <Text style={styles.statLabel}>Total Notes</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statCard}>
-              <Text style={styles.statNum}>{pinnedCount}</Text>
-              <Text style={styles.statLabel}>Pinned</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statCard}>
-              <Text style={styles.statNum}>{notes.filter((n) => n.tags.length > 0).length}</Text>
-              <Text style={styles.statLabel}>Tagged</Text>
-            </View>
-          </View>
-
           {/* Search */}
           <View style={styles.searchOuter}>
             <View style={[styles.searchWrapper, { width: isMobile ? width - 48 : isTablet ? 560 : 660 }]}>
